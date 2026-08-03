@@ -20,6 +20,14 @@ export default defineConfig(({ mode }) => {
           secure: false,
           rewrite: (path) => path.replace(/^\/uptime-proxy/, ''),
         },
+        // proxy for TrueNAS SCALE WebSocket (bypasses CORS + self-signed cert in dev)
+        '/truenas-ws': {
+          target: (env.VITE_TRUENAS_URL || 'https://192.168.72.55').replace(/^http/, 'ws'),
+          changeOrigin: true,
+          ws: true,
+          secure: false,
+          rewrite: () => '/api/v2.0/websocket',
+        },
       },
     },
   }

@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { fetchUptimeData, getLatestHeartbeat, STATUS } from "../api/uptime";
+import { fetchTrueNASStats } from "../api/truenas";
 import { useDpad1D } from "../hooks/useDpad";
 import MainLayout from "./MainLayout";
 
 const UPTIME_URL = import.meta.env.VITE_UPTIME_URL || "";
 const UPTIME_USER = import.meta.env.VITE_UPTIME_USER || "";
 const UPTIME_PASSWORD = import.meta.env.VITE_UPTIME_PASSWORD || "";
+const TRUENAS_URL = import.meta.env.VITE_TRUENAS_URL || "";
+const TRUENAS_KEY = import.meta.env.VITE_TRUENAS_KEY || "";
 const REFRESH_INTERVAL = 30_000;
 
 const STATUS_DOT = {
@@ -28,14 +31,20 @@ const BAR_SEGMENTS = 60;
 function HeartbeatBar({ beats }) {
   const visible = (beats ?? []).slice(-BAR_SEGMENTS);
   // left-pad with nulls so the bar is always full width
-  const padded = Array(BAR_SEGMENTS - visible.length).fill(null).concat(visible);
+  const padded = Array(BAR_SEGMENTS - visible.length)
+    .fill(null)
+    .concat(visible);
   return (
     <div className="hb-bar">
       {padded.map((beat, i) => (
         <span
           key={i}
           className="hb-segment"
-          style={{ background: beat ? STATUS_COLOR[beat.status] ?? "#555" : "#2a2a2a" }}
+          style={{
+            background: beat
+              ? (STATUS_COLOR[beat.status] ?? "#555")
+              : "#2a2a2a",
+          }}
         />
       ))}
     </div>
@@ -47,13 +56,45 @@ function statusOf(heartbeat) {
   return heartbeat.status;
 }
 
+function fmt(bytes) {
+  const gb = bytes / 1024 ** 3;
+  return gb >= 10 ? `${Math.round(gb)} GB` : `${gb.toFixed(1)} GB`;
+}
+
+function StatBar({ label, pct, detail }) {
+  const pctSafe = pct != null ? Math.min(100, Math.max(0, pct)) : null;
+  return (
+    <div className="stat-bar-row">
+      <span className="stat-bar-label">{label}</span>
+      <div className="stat-bar-track">
+        {pctSafe != null && (
+          <div className="stat-bar-fill" style={{ width: `${pctSafe}%` }} />
+        )}
+      </div>
+      <span className="stat-bar-pct">
+        {pctSafe != null ? `${Math.round(pctSafe)}%` : "—"}
+      </span>
+      {detail && <span className="stat-bar-detail">{detail}</span>}
+    </div>
+  );
+}
+
 export default function UptimeScreen() {
   const { goBack } = useApp();
   const [data, setData] = useState(null); // { monitors, heartbeats }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sysStats, setSysStats] = useState(null); // { cpu, ram, memTotal, memUsed }
   const [focusRegion, setFocusRegion] = useState("content");
   const focusedRef = useRef(null);
+
+  const loadStats = useCallback(() => {
+    if (TRUENAS_URL && TRUENAS_KEY) {
+      fetchTrueNASStats(TRUENAS_URL, TRUENAS_KEY)
+        .then(setSysStats)
+        .catch(() => {}); // non-fatal
+    }
+  }, []);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -67,7 +108,8 @@ export default function UptimeScreen() {
         setError(err.message);
         setLoading(false);
       });
-  }, []);
+    loadStats();
+  }, [loadStats]);
 
   useEffect(() => {
     load();
@@ -101,6 +143,20 @@ export default function UptimeScreen() {
             <span className="uptime-subtitle">
               {monitorList.length} monitors
             </span>
+          )}
+          {sysStats && (
+            <div className="uptime-sys-stats">
+              <StatBar label="CPU" pct={sysStats.cpu} />
+              <StatBar
+                label="RAM"
+                pct={sysStats.ram}
+                detail={
+                  sysStats.memUsed != null && sysStats.memTotal != null
+                    ? `${fmt(sysStats.memUsed)} / ${fmt(sysStats.memTotal)}`
+                    : null
+                }
+              />
+            </div>
           )}
         </div>
 
