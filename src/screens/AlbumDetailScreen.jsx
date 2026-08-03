@@ -11,15 +11,22 @@ export default function AlbumDetailScreen() {
   const { albumId, albumName } = screenParams;
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const focusedRef = useRef(null);
 
   useEffect(() => {
+    setError(null);
     getAlbum(serverUrl, token, albumId)
       .then((album) => {
-        setAssets(album.assets ?? []);
+        // Try both common field names across Immich versions
+        const found = album.assets ?? album.albumAssets ?? [];
+        setAssets(found);
+        if (found.length === 0) {
+          setError(`API returned 0 assets. Raw keys: ${Object.keys(album).join(', ')}. assetCount=${album.assetCount}`);
+        }
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((err) => { setError(err.message); setLoading(false); });
   }, [albumId, token, serverUrl]);
 
   const { focusIndex } = useDpadGrid({
@@ -49,6 +56,10 @@ export default function AlbumDetailScreen() {
         <div className="loading-state">
           <div className="connecting-spinner" />
           <p>Loading…</p>
+        </div>
+      ) : error ? (
+        <div className="loading-state">
+          <p style={{ color: '#f87171', fontSize: 26, maxWidth: 1400, wordBreak: 'break-all' }}>{error}</p>
         </div>
       ) : (
         <div className="asset-grid" style={{ "--cols": COLS }}>

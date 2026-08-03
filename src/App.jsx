@@ -3,6 +3,7 @@ import { AppProvider, useApp } from "./context/AppContext";
 import AlbumsScreen from "./screens/AlbumsScreen";
 import AlbumDetailScreen from "./screens/AlbumDetailScreen";
 import ViewerScreen from "./screens/ViewerScreen";
+import UptimeScreen from "./screens/UptimeScreen";
 
 function ConnectingScreen({ error }) {
   const serverUrl = import.meta.env.VITE_IMMICH_URL;
@@ -52,6 +53,8 @@ function Router() {
       return <AlbumDetailScreen />;
     case "viewer":
       return <ViewerScreen />;
+    case "uptime":
+      return <UptimeScreen />;
     default:
       return <AlbumsScreen />;
   }
