@@ -26,6 +26,7 @@ export default function AlbumRow({
             <AlbumCard
               key={album.id}
               album={album}
+              index={i}
               focused={focused && activeCol === i}
             />
           ))}

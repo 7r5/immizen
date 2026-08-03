@@ -19,7 +19,8 @@ export function fetchUptimeData(url, username, password) {
 
         const socket = io(socketUrl, {
             path: socketPath,
-            transports: ["polling", "websocket"],
+            // polling-only: avoids WebSocket upgrade which breaks through the Vite proxy
+            transports: ["polling"],
             reconnection: false,
             timeout: 10000,
         });

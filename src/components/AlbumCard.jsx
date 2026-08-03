@@ -2,7 +2,7 @@ import { useApp } from "../context/AppContext";
 import { getAlbumThumbnailUrl } from "../api/immich";
 import AuthImage from "./AuthImage";
 
-export default function AlbumCard({ album, focused }) {
+export default function AlbumCard({ album, focused, index = 0 }) {
   const { token, serverUrl } = useApp();
   const thumbUrl = getAlbumThumbnailUrl(
     serverUrl,
@@ -11,7 +11,10 @@ export default function AlbumCard({ album, focused }) {
   );
 
   return (
-    <div className={`album-card ${focused ? "focused" : ""}`}>
+    <div
+      className={`album-card ${focused ? "focused" : ""}`}
+      style={{ "--stagger-index": Math.min(index, 12) }}
+    >
       <div className="album-card-thumb">
         {thumbUrl ? (
           <AuthImage

@@ -1,72 +1,68 @@
-// Connects to TrueNAS SCALE via its DDP WebSocket API and returns one snapshot of CPU/RAM.
-export function fetchTrueNASStats(baseUrl, apiKey) {
-    return new Promise((resolve, reject) => {
-        // in dev, route through Vite proxy to bypass CORS and self-signed cert
-        const wsUrl = import.meta.env.DEV
-            ? `ws://${window.location.host}/truenas-ws`
-            : `${baseUrl.replace(/^https?/, "wss")}/api/v2.0/websocket`;
+// Fetches a single CPU + RAM snapshot from TrueNAS SCALE via its REST reporting API.
+export async function fetchTrueNASStats(baseUrl, apiKey) {
+    // in dev use Vite proxy (avoids self-signed cert); in prod call directly
+    const base = import.meta.env.DEV ? '/truenas-api' : baseUrl;
 
-        let ws;
-        let timer;
-        let settled = false;
+    const headers = {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+    };
 
-        const done = (result, err) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            try { ws.close(); } catch (_) { }
-            if (err) reject(err);
-            else resolve(result);
-        };
+    // REST API passes positional WebSocket params as [graphs_list, query_object]
+    const res = await fetch(`${base}/api/v2.0/reporting/get_data`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify([
+            [{ name: 'cpu' }, { name: 'memory' }],
+            { start: 'now-2m', end: 'now', step: 10, aggregate: true },
+        ]),
+    });
 
-        try {
-            ws = new WebSocket(wsUrl);
-        } catch (e) {
-            reject(new Error(`WebSocket open failed: ${e.message}`));
-            return;
+    if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        console.log('[TrueNAS REST] error body', body);
+        throw new Error(`TrueNAS API ${res.status}: ${body.slice(0, 200)}`);
+    }
+
+    const graphs = await res.json();
+    console.log('[TrueNAS REST] graphs', graphs);
+
+    let cpu = null, ram = null, memTotal = null, memUsed = null;
+
+    for (const graph of graphs) {
+        if (graph.name === 'cpu') {
+            const legend = graph.legend ?? [];
+            const idleIdx = legend.indexOf('idle');
+            const latest = graph.data?.at(-1);
+            if (latest && idleIdx > 0) {
+                cpu = 100 - latest[idleIdx];
+            } else if (graph.aggregations?.mean) {
+                // aggregations omit the 'time' column so shift index by 1
+                const iIdx = idleIdx - 1;
+                if (iIdx >= 0) cpu = 100 - graph.aggregations.mean[iIdx];
+            }
         }
 
-        timer = setTimeout(() => done(null, new Error("TrueNAS stats timeout")), 10000);
-
-        ws.onopen = () => {
-            ws.send(JSON.stringify({ id: "1", msg: "connect", version: "1", support: ["1"] }));
-        };
-
-        ws.onmessage = (e) => {
-            let msg;
-            try { msg = JSON.parse(e.data); } catch { return; }
-
-            if (msg.msg === "connected") {
-                ws.send(JSON.stringify({
-                    id: "2", msg: "method",
-                    method: "auth.login_with_api_key",
-                    params: [apiKey],
-                }));
-                return;
+        if (graph.name === 'memory') {
+            const legend = graph.legend ?? [];
+            const latest = graph.data?.at(-1);
+            if (latest) {
+                const usedIdx = legend.indexOf('used');
+                const freeIdx = legend.indexOf('free');
+                const buffIdx = legend.indexOf('buffers');
+                const cachIdx = legend.indexOf('cached');
+                if (usedIdx > 0 && freeIdx > 0) {
+                    const used = latest[usedIdx];
+                    const free = latest[freeIdx];
+                    const buffers = buffIdx > 0 ? latest[buffIdx] : 0;
+                    const cached = cachIdx > 0 ? latest[cachIdx] : 0;
+                    memTotal = used + free + buffers + cached;
+                    memUsed = used;
+                    ram = (used / memTotal) * 100;
+                }
             }
+        }
+    }
 
-            if (msg.id === "2" && msg.msg === "result") {
-                if (!msg.result) { done(null, new Error("TrueNAS API key rejected")); return; }
-                ws.send(JSON.stringify({
-                    id: "3", msg: "sub",
-                    name: "reporting.realtime",
-                    params: [{ cpu: { percentage: true }, memory: true }],
-                }));
-                return;
-            }
-
-            // first realtime update — grab values and disconnect
-            if (msg.msg === "changed" && msg.collection === "reporting.realtime") {
-                const cpu = msg.fields?.cpu?.average?.usage ?? null;
-                const memTotal = msg.fields?.memory?.physical_memory_total ?? null;
-                const memAvail = msg.fields?.memory?.physical_memory_available ?? null;
-                const ramPct = memTotal && memAvail != null
-                    ? ((memTotal - memAvail) / memTotal) * 100
-                    : null;
-                done({ cpu, ram: ramPct, memTotal, memUsed: memTotal != null ? memTotal - memAvail : null });
-            }
-        };
-
-        ws.onerror = () => done(null, new Error("TrueNAS WebSocket error"));
-    });
+    return { cpu, ram, memTotal, memUsed };
 }

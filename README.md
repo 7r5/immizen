@@ -64,6 +64,20 @@ The `dist/` output is ready to be packaged as a `.wgt` Tizen web app using Tizen
 | Enter | Open album / open asset / toggle slideshow |
 | Back | Return to previous screen / stop slideshow |
 
+### Viewer controls
+
+| Key | Action |
+|---|---|
+| ← / → | Previous / next asset. Manual navigation pauses the slideshow. |
+| Enter | Start or pause the slideshow. |
+| ↓ | Open the viewer controls. |
+| ← / → (in controls) | Move control focus. |
+| Enter (in controls) | Select playback, interval, information, music, or exit. |
+| ↑ / Back (in controls) | Close viewer controls. |
+| Back (viewer) | Return to the album. |
+
+Photos wait for their full image and background preview before a transition begins. Slides use a short cross-dissolve with restrained motion: landscape photos can pan or zoom slightly, while portrait photos remain fully visible without zoom. Videos play through completely before the slideshow advances.
+
 ## Project Structure
 
 ```

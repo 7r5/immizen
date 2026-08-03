@@ -1,18 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useApp } from "../context/AppContext";
-
-// Module-level cache survives re-renders; blob URLs persist for the session lifetime.
-const blobCache = new Map();
-
-export function preloadImage(url, token) {
-  if (!url || !token || blobCache.has(url)) return;
-  fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-    .then((r) => (r.ok ? r.blob() : Promise.reject()))
-    .then((blob) => {
-      if (!blobCache.has(url)) blobCache.set(url, URL.createObjectURL(blob));
-    })
-    .catch(() => {});
-}
+import { getCachedImageUrl, loadImage } from "../api/imageCache";
 
 export default function AuthImage({
   url,
@@ -20,32 +8,50 @@ export default function AuthImage({
   alt = "",
   objectFit = "cover",
   style,
+  onAnimationEnd,
+  onLoad,
+  onError,
 }) {
   const { token } = useApp();
-  const [src, setSrc] = useState(() => blobCache.get(url) ?? null);
+  const [loadedImage, setLoadedImage] = useState(() => ({
+    url,
+    src: getCachedImageUrl(url),
+  }));
+  const onLoadRef = useRef(onLoad);
+  const onErrorRef = useRef(onError);
 
   useEffect(() => {
-    if (!url || !token) return;
-    if (blobCache.has(url)) {
-      setSrc(blobCache.get(url));
-      return;
-    }
+    onLoadRef.current = onLoad;
+    onErrorRef.current = onError;
+  }, [onLoad, onError]);
 
-    let cancelled = false;
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => (r.ok ? r.blob() : Promise.reject()))
-      .then((blob) => {
-        if (cancelled) return;
-        const objUrl = URL.createObjectURL(blob);
-        blobCache.set(url, objUrl);
-        setSrc(objUrl);
+  useEffect(() => {
+    let active = true;
+    const cachedUrl = getCachedImageUrl(url);
+
+    if (cachedUrl) return undefined;
+
+    loadImage(url, token)
+      .then((blobUrl) => {
+        if (!active) return;
+        setLoadedImage({ url, src: blobUrl });
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (active) onErrorRef.current?.(error);
+      });
 
     return () => {
-      cancelled = true;
+      active = false;
     };
   }, [url, token]);
+
+  const src =
+    getCachedImageUrl(url) ??
+    (loadedImage.url === url ? loadedImage.src : null);
+
+  useEffect(() => {
+    if (src) onLoadRef.current?.();
+  }, [src]);
 
   const baseStyle = {
     width: "100%",
@@ -62,5 +68,13 @@ export default function AuthImage({
         style={baseStyle}
       />
     );
-  return <img className={className} src={src} alt={alt} style={baseStyle} />;
+  return (
+    <img
+      className={`img-loaded${className ? ` ${className}` : ""}`}
+      src={src}
+      alt={alt}
+      style={baseStyle}
+      onAnimationEnd={onAnimationEnd}
+    />
+  );
 }

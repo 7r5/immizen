@@ -1,8 +1,3 @@
-// Drop MP3 files into public/music/ and register their paths here.
-// Example: '/music/my-song.mp3'
-const TRACKS = [
-    '/music/Chayanne - Tiempo De Vals.mp3',
-    '/music/Darude - Sandstorm.mp3',
-]
-
+// Auto-discovered from public/music/ at build time — no manual registration needed.
+import TRACKS from 'virtual:music-tracks'
 export default TRACKS

@@ -128,7 +128,7 @@ export function useDpadGrid({ count, cols, onSelect, onBack, enabled = true }) {
  * Manages D-pad focus for a 1D list (sidebar, interval selector, etc).
  * Returns { focusIndex, setFocusIndex }
  */
-export function useDpad1D({ count, onSelect, onBack, onRight, enabled = true }) {
+export function useDpad1D({ count, onSelect, onBack, onLeft, onRight, enabled = true }) {
     const [focusIndex, setFocusIndex] = useState(0)
 
     const handleKey = useCallback((e) => {
@@ -155,11 +155,16 @@ export function useDpad1D({ count, onSelect, onBack, onRight, enabled = true }) 
             setFocusIndex((i) => Math.max(i - 1, 0))
             return
         }
+        if (code === KEYS.LEFT) {
+            e.preventDefault()
+            onLeft?.()
+            return
+        }
         if (code === KEYS.RIGHT) {
             e.preventDefault()
             onRight?.()
         }
-    }, [enabled, focusIndex, count, onSelect, onBack, onRight])
+    }, [enabled, focusIndex, count, onSelect, onBack, onLeft, onRight])
 
     useEffect(() => {
         window.addEventListener('keydown', handleKey)

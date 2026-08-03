@@ -84,15 +84,22 @@ export default function UptimeScreen() {
   const [data, setData] = useState(null); // { monitors, heartbeats }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [sysStats, setSysStats] = useState(null); // { cpu, ram, memTotal, memUsed }
+  const [sysStats, setSysStats] = useState(null);
+  const [sysError, setSysError] = useState(null);
   const [focusRegion, setFocusRegion] = useState("content");
   const focusedRef = useRef(null);
 
   const loadStats = useCallback(() => {
     if (TRUENAS_URL && TRUENAS_KEY) {
       fetchTrueNASStats(TRUENAS_URL, TRUENAS_KEY)
-        .then(setSysStats)
-        .catch(() => {}); // non-fatal
+        .then((s) => {
+          setSysStats(s);
+          setSysError(null);
+        })
+        .catch((err) => {
+          console.error("[TrueNAS]", err.message);
+          setSysError(err.message);
+        });
     }
   }, []);
 
@@ -125,6 +132,7 @@ export default function UptimeScreen() {
     count: monitorList.length,
     enabled: focusRegion === "content" && !loading,
     onBack: goBack,
+    onLeft: goBack,
   });
 
   useEffect(() => {
@@ -157,6 +165,11 @@ export default function UptimeScreen() {
                 }
               />
             </div>
+          )}
+          {sysError && (
+            <span className="uptime-sys-error" title={sysError}>
+              NAS ✕
+            </span>
           )}
         </div>
 

@@ -2,6 +2,22 @@
 /* ============================
    TV LAYOUT
    ============================ */
+
+@keyframes shimmer {
+  0%   { background-position: -900px 0; }
+  100% { background-position:  900px 0; }
+}
+
+@keyframes card-appear {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes img-appear {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 .tv-layout {
   display: flex;
   width: 1920px;
@@ -130,20 +146,23 @@
    ============================ */
 .album-card {
   flex-shrink: 0;
-  width: 320px;
-  height: 190px;
-  border-radius: 8px;
+  width: 400px;
+  height: 240px;
+  border-radius: 10px;
   overflow: hidden;
   position: relative;
   background: #222;
-  border: 3px solid transparent;
+  border: 4px solid transparent;
   transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+  opacity: 0;
+  animation: card-appear 400ms ease forwards;
+  animation-delay: calc(var(--stagger-index, 0) * 65ms);
 }
 
 .album-card.focused {
-  transform: scale(1.07);
-  border-color: #fff;
-  box-shadow: 0 0 0 2px rgba(255,255,255,0.3), 0 16px 40px rgba(0,0,0,0.8);
+  transform: scale(1.1);
+  border-color: #facc15;
+  box-shadow: 0 0 0 4px rgba(250,204,21,0.35), 0 20px 50px rgba(0,0,0,0.9);
   z-index: 2;
 }
 
@@ -163,7 +182,9 @@
 .auth-img-placeholder {
   width: 100%;
   height: 100%;
-  background: #1e1e1e;
+  background: linear-gradient(90deg, #1a1a1a 25%, #2d2d2d 50%, #1a1a1a 75%);
+  background-size: 900px 100%;
+  animation: shimmer 1.5s infinite linear;
 }
 
 .album-card-placeholder {
@@ -172,9 +193,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 56px;
+  font-size: 70px;
   color: #444;
-  background: #1e1e1e;
+  background: linear-gradient(90deg, #1a1a1a 25%, #2d2d2d 50%, #1a1a1a 75%);
+  background-size: 900px 100%;
+  animation: shimmer 1.5s infinite linear;
 }
 
 .album-card-gradient {
@@ -192,7 +215,7 @@
 }
 
 .album-card-name {
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 600;
   color: #fff;
   white-space: nowrap;
@@ -200,10 +223,18 @@
   text-overflow: ellipsis;
 }
 
+.album-card.focused .album-card-name {
+  color: #facc15;
+}
+
 .album-card-count {
-  font-size: 18px;
+  font-size: 20px;
   color: #aaa;
   margin-top: 2px;
+}
+
+.img-loaded {
+  animation: img-appear 300ms ease forwards;
 }
 
 /* ============================
@@ -272,6 +303,9 @@
   background: #2a2a2a;
   outline: 2px solid #333;
   transition: outline-color 120ms ease, box-shadow 120ms ease;
+  opacity: 0;
+  animation: card-appear 350ms ease forwards;
+  animation-delay: calc(var(--stagger-index, 0) * 40ms);
 }
 
 .asset-thumb > * {
@@ -327,6 +361,47 @@
   overflow: hidden;
 }
 
+/* Blurred ambient background */
+.viewer-bg {
+  position: absolute;
+  inset: -80px;
+  width: calc(100% + 160px);
+  height: calc(100% + 160px);
+  object-fit: cover;
+  filter: blur(36px) brightness(0.45) saturate(0.65);
+  z-index: 0;
+  transform-origin: center;
+  opacity: 0;
+}
+
+/* Cinematic edge darkening */
+.viewer-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.5) 100%);
+}
+
+/* Wrapper that carries the Ken Burns transform; children fill it via cover */
+.viewer-pan-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
+/* Exit layer sits beneath the entering image */
+.viewer-media-exit {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
+/* Fallback contain image (manual nav, paused) */
 .viewer-media {
   max-width: 1920px;
   max-height: 1080px;
@@ -338,61 +413,80 @@
   z-index: 1;
 }
 
-.viewer-bg {
+/* ---- Background: fade-in, then gentle pan ---- */
+@keyframes bgFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes bgPanLeft  { 0% { transform: scale(1.28) translateX(  5%); } 100% { transform: scale(1.28) translateX( -5%); } }
+@keyframes bgPanRight { 0% { transform: scale(1.28) translateX( -5%); } 100% { transform: scale(1.28) translateX(  5%); } }
+@keyframes bgPanUp    { 0% { transform: scale(1.28) translateY(  5%); } 100% { transform: scale(1.28) translateY( -5%); } }
+@keyframes bgPanDown  { 0% { transform: scale(1.28) translateY( -5%); } 100% { transform: scale(1.28) translateY(  5%); } }
+
+/* Previous background stays at full opacity while the new one fades in above it */
+.viewer-bg-hold { opacity: 1; animation: none; }
+
+/* Fade in over 1.5s, then start pan with a matching delay */
+.viewer-bg-pan-left  { animation: bgFadeIn 1.5s ease forwards, bgPanLeft  28s ease-in-out 1.5s infinite alternate; }
+.viewer-bg-pan-right { animation: bgFadeIn 1.5s ease forwards, bgPanRight 28s ease-in-out 1.5s infinite alternate; }
+.viewer-bg-pan-up    { animation: bgFadeIn 1.5s ease forwards, bgPanUp    28s ease-in-out 1.5s infinite alternate; }
+.viewer-bg-pan-down  { animation: bgFadeIn 1.5s ease forwards, bgPanDown  28s ease-in-out 1.5s infinite alternate; }
+
+/* ---- Foreground Ken Burns keyframes (applied to .viewer-pan-wrap) ---- */
+/* All use object-fit:cover on the child image, so no black edges ever appear */
+@keyframes panUp    { 0% { transform: scale(1.06) translateY( 2%); } 100% { transform: scale(1.06) translateY(-2%); } }
+@keyframes panDown  { 0% { transform: scale(1.06) translateY(-2%); } 100% { transform: scale(1.06) translateY( 2%); } }
+@keyframes panLeft  { 0% { transform: scale(1.06) translateX( 2%); } 100% { transform: scale(1.06) translateX(-2%); } }
+@keyframes panRight { 0% { transform: scale(1.06) translateX(-2%); } 100% { transform: scale(1.06) translateX( 2%); } }
+@keyframes panTL    { 0% { transform: scale(1.07) translate( 1.5%,  1.5%); } 100% { transform: scale(1.04) translate(-1.5%, -1.5%); } }
+@keyframes panBR    { 0% { transform: scale(1.04) translate(-1.5%, -1.5%); } 100% { transform: scale(1.07) translate( 1.5%,  1.5%); } }
+@keyframes panTR    { 0% { transform: scale(1.07) translate(-1.5%,  1.5%); } 100% { transform: scale(1.04) translate( 1.5%, -1.5%); } }
+@keyframes panBL    { 0% { transform: scale(1.04) translate( 1.5%, -1.5%); } 100% { transform: scale(1.07) translate(-1.5%,  1.5%); } }
+@keyframes zoomIn   { 0% { transform: scale(1.0);  } 100% { transform: scale(1.07); } }
+@keyframes zoomOut  { 0% { transform: scale(1.08); } 100% { transform: scale(1.0);  } }
+
+/* animation-fill-mode:both holds the start frame before and end frame after */
+.viewer-pan-wrap.pan-up    { animation: panUp    var(--slide-dur, 8s) ease-in-out both; }
+.viewer-pan-wrap.pan-down  { animation: panDown  var(--slide-dur, 8s) ease-in-out both; }
+.viewer-pan-wrap.pan-left  { animation: panLeft  var(--slide-dur, 8s) ease-in-out both; }
+.viewer-pan-wrap.pan-right { animation: panRight var(--slide-dur, 8s) ease-in-out both; }
+.viewer-pan-wrap.pan-tl    { animation: panTL    var(--slide-dur, 8s) ease-in-out both; }
+.viewer-pan-wrap.pan-br    { animation: panBR    var(--slide-dur, 8s) ease-in-out both; }
+.viewer-pan-wrap.pan-tr    { animation: panTR    var(--slide-dur, 8s) ease-in-out both; }
+.viewer-pan-wrap.pan-bl    { animation: panBL    var(--slide-dur, 8s) ease-in-out both; }
+.viewer-pan-wrap.zoom-in   { animation: zoomIn   var(--slide-dur, 8s) ease-in-out both; }
+.viewer-pan-wrap.zoom-out  { animation: zoomOut  var(--slide-dur, 8s) ease-in-out both; }
+
+/* ---- Entrance / exit: pure cross-dissolve, no scale/zoom ---- */
+@keyframes slideFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes slideFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+.anim-enter-next,
+.anim-enter-prev { animation: slideFadeIn  1.2s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-exit-next,
+.anim-exit-prev  { animation: slideFadeOut 0.9s ease both; }
+
+/* ---- Slideshow progress bar ---- */
+@keyframes progress-drain {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+.viewer-progress {
   position: absolute;
-  inset: -60px;
-  width: calc(100% + 120px);
-  height: calc(100% + 120px);
-  object-fit: cover;
-  filter: blur(28px) brightness(0.5) saturate(0.7);
-  z-index: 0;
-  transform-origin: center;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.65);
+  z-index: 11;
+  pointer-events: none;
+  border-radius: 0 2px 2px 0;
 }
-
-/* ---- foreground pan keyframes ---- */
-@keyframes panUp    { 0% { transform: scale(1.1) translateY( 5%); } 100% { transform: scale(1.1) translateY(-5%); } }
-@keyframes panDown  { 0% { transform: scale(1.1) translateY(-5%); } 100% { transform: scale(1.1) translateY( 5%); } }
-@keyframes panLeft  { 0% { transform: scale(1.1) translateX( 5%); } 100% { transform: scale(1.1) translateX(-5%); } }
-@keyframes panRight { 0% { transform: scale(1.1) translateX(-5%); } 100% { transform: scale(1.1) translateX( 5%); } }
-
-/* ---- background pan keyframes ---- */
-@keyframes bgPanLeft  { 0% { transform: scale(1.25) translateX(  4%); } 100% { transform: scale(1.25) translateX( -4%); } }
-@keyframes bgPanRight { 0% { transform: scale(1.25) translateX( -4%); } 100% { transform: scale(1.25) translateX(  4%); } }
-@keyframes bgPanUp    { 0% { transform: scale(1.25) translateY(  4%); } 100% { transform: scale(1.25) translateY( -4%); } }
-@keyframes bgPanDown  { 0% { transform: scale(1.25) translateY( -4%); } 100% { transform: scale(1.25) translateY(  4%); } }
-
-.pan-up    { animation: panUp    var(--slide-dur, 8s) ease-in-out infinite alternate; }
-.pan-down  { animation: panDown  var(--slide-dur, 8s) ease-in-out infinite alternate; }
-.pan-left  { animation: panLeft  var(--slide-dur, 8s) ease-in-out infinite alternate; }
-.pan-right { animation: panRight var(--slide-dur, 8s) ease-in-out infinite alternate; }
-
-.bg-pan-left  { animation: bgPanLeft  20s ease-in-out infinite alternate; }
-.bg-pan-right { animation: bgPanRight 20s ease-in-out infinite alternate; }
-.bg-pan-up    { animation: bgPanUp    20s ease-in-out infinite alternate; }
-.bg-pan-down  { animation: bgPanDown  20s ease-in-out infinite alternate; }
-
-/* ---- entrance / exit animations ---- */
-@keyframes enterFromRight {
-  from { opacity: 0; transform: translateX(6%); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-@keyframes enterFromLeft {
-  from { opacity: 0; transform: translateX(-6%); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-@keyframes exitToLeft {
-  from { opacity: 1; transform: translateX(0); }
-  to   { opacity: 0; transform: translateX(-4%); }
-}
-@keyframes exitToRight {
-  from { opacity: 1; transform: translateX(0); }
-  to   { opacity: 0; transform: translateX(4%); }
-}
-
-.anim-enter-next { animation: enterFromRight 0.55s cubic-bezier(0.25,0.46,0.45,0.94) both; }
-.anim-enter-prev { animation: enterFromLeft  0.55s cubic-bezier(0.25,0.46,0.45,0.94) both; }
-.anim-exit-next  { animation: exitToLeft     0.55s cubic-bezier(0.25,0.46,0.45,0.94) both; }
-.anim-exit-prev  { animation: exitToRight    0.55s cubic-bezier(0.25,0.46,0.45,0.94) both; }
 
 .viewer-overlay {
   position: absolute;
@@ -570,6 +664,236 @@
   letter-spacing: 0.3px;
 }
 
+/* Viewer transition system: resources are ready before these animations begin. */
+.viewer-bg {
+  inset: -56px;
+  width: calc(100% + 112px);
+  height: calc(100% + 112px);
+  filter: blur(32px) brightness(0.42) saturate(0.68);
+  opacity: 1;
+  animation: none;
+}
+
+.viewer-bg-enter {
+  z-index: 0;
+  animation: background-fade-in 1.4s ease both;
+}
+
+.viewer-bg-leave {
+  z-index: 0;
+  opacity: 1;
+}
+
+.viewer-media {
+  z-index: 1;
+  transform-origin: center;
+}
+
+.viewer-media-enter {
+  z-index: 2;
+  opacity: 0;
+  animation: slideFadeIn 1.4s cubic-bezier(0.22, 0.8, 0.25, 1) both;
+}
+
+.viewer-media-leave {
+  z-index: 1;
+  opacity: 1;
+  animation: slideFadeOut 1.4s ease both;
+}
+
+@keyframes background-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes landscape-pan-left {
+  from { transform: scale(1.02) translateX(0.7%); }
+  to { transform: scale(1.02) translateX(-0.7%); }
+}
+
+@keyframes landscape-pan-right {
+  from { transform: scale(1.02) translateX(-0.7%); }
+  to { transform: scale(1.02) translateX(0.7%); }
+}
+
+@keyframes landscape-zoom {
+  from { transform: scale(1.005); }
+  to { transform: scale(1.025); }
+}
+
+@keyframes portrait-pan-up {
+  from { transform: translateY(0.35%); }
+  to { transform: translateY(-0.35%); }
+}
+
+@keyframes portrait-pan-down {
+  from { transform: translateY(-0.35%); }
+  to { transform: translateY(0.35%); }
+}
+
+.viewer-media-enter.viewer-motion-landscape-left {
+  animation: slideFadeIn 1.4s cubic-bezier(0.22, 0.8, 0.25, 1) both, landscape-pan-left 12s ease-in-out 1.4s alternate both;
+}
+
+.viewer-media-enter.viewer-motion-landscape-right {
+  animation: slideFadeIn 1.4s cubic-bezier(0.22, 0.8, 0.25, 1) both, landscape-pan-right 12s ease-in-out 1.4s alternate both;
+}
+
+.viewer-media-enter.viewer-motion-landscape-zoom {
+  animation: slideFadeIn 1.4s cubic-bezier(0.22, 0.8, 0.25, 1) both, landscape-zoom 12s ease-in-out 1.4s both;
+}
+
+.viewer-media-enter.viewer-motion-portrait-up {
+  animation: slideFadeIn 1.4s cubic-bezier(0.22, 0.8, 0.25, 1) both, portrait-pan-up 12s ease-in-out 1.4s alternate both;
+}
+
+.viewer-media-enter.viewer-motion-portrait-down {
+  animation: slideFadeIn 1.4s cubic-bezier(0.22, 0.8, 0.25, 1) both, portrait-pan-down 12s ease-in-out 1.4s alternate both;
+}
+
+.viewer-video-preload {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.viewer-vignette { z-index: 3; }
+
+.viewer-status {
+  position: absolute;
+  top: 34px;
+  left: 48px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: #f8fafc;
+  font-size: 23px;
+  font-weight: 600;
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+
+.viewer-status.hidden {
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+}
+
+.viewer-status.visible { opacity: 1; }
+
+.viewer-status-playing {
+  color: #b9f7d0;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.viewer-status-track {
+  max-width: 430px;
+  overflow: hidden;
+  color: #c7e7f1;
+  font-size: 18px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewer-info {
+  z-index: 10;
+  border-radius: 6px;
+  background: rgba(7, 11, 14, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.viewer-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 10;
+  padding: 12px 20px;
+  color: #eef6fa;
+  font-size: 22px;
+  background: rgba(7, 11, 14, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  transform: translate(-50%, -50%);
+}
+
+.viewer-message-error {
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.7);
+}
+
+.viewer-control-panel {
+  position: absolute;
+  right: 48px;
+  bottom: 42px;
+  left: 48px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 76px;
+  padding: 14px 18px;
+  background: rgba(7, 11, 14, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+}
+
+.viewer-control-panel button {
+  min-height: 52px;
+  border: 2px solid #4b5563;
+  border-radius: 6px;
+  color: #dbe4ea;
+  font-size: 20px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.viewer-control-primary {
+  min-width: 154px;
+  padding: 0 24px;
+  border-color: #a7f3d0 !important;
+  color: #d1fae5 !important;
+  background: rgba(16, 185, 129, 0.18) !important;
+}
+
+.viewer-control {
+  padding: 0 20px;
+}
+
+.viewer-control-exit { margin-left: auto; }
+
+.interval-selector {
+  gap: 8px;
+}
+
+.interval-btn {
+  min-width: 62px;
+  padding: 0 14px;
+}
+
+.interval-btn.active {
+  color: #fff;
+  border-color: #facc15;
+  background: rgba(250, 204, 21, 0.18);
+}
+
+.viewer-control-panel .menu-focused {
+  outline: 3px solid #facc15 !important;
+  outline-offset: 3px;
+  transform: scale(1.04);
+}
+
+.viewer-progress {
+  z-index: 11;
+  height: 4px;
+  background: #a7f3d0;
+  border-radius: 0;
+}
+
 /* ============================
    THUMBNAIL LOCATION BADGE
    ============================ */
@@ -681,6 +1005,13 @@
   flex-direction: column;
   gap: 10px;
   min-width: 540px;
+}
+
+.uptime-sys-error {
+  margin-left: auto;
+  font-size: 22px;
+  color: #f87171;
+  align-self: center;
 }
 
 .stat-bar-row {

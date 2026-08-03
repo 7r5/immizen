@@ -5,6 +5,10 @@ import { useDpadGrid } from "../hooks/useDpad";
 import AuthImage from "../components/AuthImage";
 
 const COLS = 5;
+// How many thumbnails to render initially and per expansion step
+const PAGE = 80;
+// Expand the render window when focus is this many items from the loaded boundary
+const LOAD_AHEAD = COLS * 4;
 
 export default function AlbumDetailScreen() {
   const { token, serverUrl, screenParams, navigate, goBack } = useApp();
@@ -12,10 +16,13 @@ export default function AlbumDetailScreen() {
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // How many asset cells are currently in the DOM
+  const [renderCount, setRenderCount] = useState(PAGE);
   const focusedRef = useRef(null);
 
   useEffect(() => {
     setError(null);
+    setRenderCount(PAGE);
     getAlbum(serverUrl, token, albumId)
       .then(async (album) => {
         let found = album.assets ?? album.albumAssets ?? [];
@@ -44,6 +51,13 @@ export default function AlbumDetailScreen() {
     onBack: goBack,
     enabled: !loading,
   });
+
+  // Extend the render window before the user reaches its edge
+  useEffect(() => {
+    if (focusIndex + LOAD_AHEAD >= renderCount && renderCount < assets.length) {
+      setRenderCount((c) => Math.min(c + PAGE, assets.length));
+    }
+  }, [focusIndex, renderCount, assets.length]);
 
   // scroll focused thumbnail into view
   useEffect(() => {
@@ -80,11 +94,12 @@ export default function AlbumDetailScreen() {
         </div>
       ) : (
         <div className="asset-grid" style={{ "--cols": COLS }}>
-          {assets.map((asset, i) => (
+          {assets.slice(0, renderCount).map((asset, i) => (
             <div
               key={asset.id}
               ref={focusIndex === i ? focusedRef : null}
               className={`asset-thumb ${focusIndex === i ? "focused" : ""}`}
+              style={{ "--stagger-index": Math.min(i % PAGE, 30) }}
             >
               <AuthImage
                 url={getThumbnailUrl(serverUrl, token, asset.id, "thumbnail")}
