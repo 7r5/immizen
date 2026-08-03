@@ -9,30 +9,36 @@ function ConnectingScreen({ error }) {
   const serverUrl = import.meta.env.VITE_IMMICH_URL;
   const email = import.meta.env.VITE_IMMICH_EMAIL;
   return (
-    <div className="connecting-screen">
+    <div
+      className="connecting-screen"
+      role={error ? "alert" : "status"}
+      aria-live="polite"
+    >
       {error ? (
         <>
-          <div className="connecting-icon error-icon">✕</div>
-          <h2>Connection failed</h2>
+          <div className="connecting-icon error-icon" aria-hidden="true">
+            ✕
+          </div>
+          <h2>No se pudo conectar</h2>
           <p className="connecting-error">{error}</p>
           <div className="connecting-diagnostics">
             <p>
               <span className="diag-label">URL:</span>{" "}
-              {serverUrl || <em>not set</em>}
+              {serverUrl || <em>sin configurar</em>}
             </p>
             <p>
-              <span className="diag-label">Email:</span>{" "}
-              {email || <em>not set</em>}
+              <span className="diag-label">Correo:</span>{" "}
+              {email ? "configurado" : <em>sin configurar</em>}
             </p>
           </div>
           <p className="connecting-hint">
-            Edit <code>.env.local</code> and restart the dev server.
+            Edita <code>.env.local</code> y reinicia la aplicación.
           </p>
         </>
       ) : (
         <>
-          <div className="connecting-spinner" />
-          <h2>Connecting to Immich…</h2>
+          <div className="connecting-spinner" aria-hidden="true" />
+          <h2>Conectando con Immich…</h2>
           <p className="connecting-hint">{serverUrl}</p>
         </>
       )}

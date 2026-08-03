@@ -14,4 +14,20 @@ html, body, #root {
 }
 
 button { cursor: none; font-family: inherit; }
+button:focus { outline: none; }
+button:focus-visible { outline: 3px solid #facc15; outline-offset: 3px; }
 img { display: block; }
+
+@media (pointer: fine) {
+  html, body, #root { cursor: auto; }
+  button { cursor: pointer; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

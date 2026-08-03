@@ -73,7 +73,11 @@
   padding: 20px 36px;
   font-size: 30px;
   color: #888;
+  width: 100%;
+  border: 0;
   border-left: 4px solid transparent;
+  background: transparent;
+  text-align: left;
   transition: all 120ms ease;
 }
 
@@ -111,11 +115,6 @@
   flex-direction: column;
   gap: 56px;
 }
-
-/* ============================
-   ALBUM ROW (Netflix style)
-   ============================ */
-.album-row { }
 
 .row-title {
   font-size: 32px;
@@ -157,6 +156,10 @@
   opacity: 0;
   animation: card-appear 400ms ease forwards;
   animation-delay: calc(var(--stagger-index, 0) * 65ms);
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
 
 .album-card.focused {
@@ -273,6 +276,7 @@
 }
 
 .back-btn:hover { color: #fff; }
+.back-btn:focus-visible { color: #fff; }
 
 .detail-title {
   font-size: 36px;
@@ -306,15 +310,10 @@
   opacity: 0;
   animation: card-appear 350ms ease forwards;
   animation-delay: calc(var(--stagger-index, 0) * 40ms);
-}
-
-.asset-thumb > * {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 4px;
-  overflow: hidden;
-  display: block;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
 }
 
 .asset-thumb img,
@@ -383,24 +382,6 @@
   background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.5) 100%);
 }
 
-/* Wrapper that carries the Ken Burns transform; children fill it via cover */
-.viewer-pan-wrap {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-}
-
-/* Exit layer sits beneath the entering image */
-.viewer-media-exit {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-}
-
 /* Fallback contain image (manual nav, paused) */
 .viewer-media {
   max-width: 1920px;
@@ -413,50 +394,6 @@
   z-index: 1;
 }
 
-/* ---- Background: fade-in, then gentle pan ---- */
-@keyframes bgFadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-@keyframes bgPanLeft  { 0% { transform: scale(1.28) translateX(  5%); } 100% { transform: scale(1.28) translateX( -5%); } }
-@keyframes bgPanRight { 0% { transform: scale(1.28) translateX( -5%); } 100% { transform: scale(1.28) translateX(  5%); } }
-@keyframes bgPanUp    { 0% { transform: scale(1.28) translateY(  5%); } 100% { transform: scale(1.28) translateY( -5%); } }
-@keyframes bgPanDown  { 0% { transform: scale(1.28) translateY( -5%); } 100% { transform: scale(1.28) translateY(  5%); } }
-
-/* Previous background stays at full opacity while the new one fades in above it */
-.viewer-bg-hold { opacity: 1; animation: none; }
-
-/* Fade in over 1.5s, then start pan with a matching delay */
-.viewer-bg-pan-left  { animation: bgFadeIn 1.5s ease forwards, bgPanLeft  28s ease-in-out 1.5s infinite alternate; }
-.viewer-bg-pan-right { animation: bgFadeIn 1.5s ease forwards, bgPanRight 28s ease-in-out 1.5s infinite alternate; }
-.viewer-bg-pan-up    { animation: bgFadeIn 1.5s ease forwards, bgPanUp    28s ease-in-out 1.5s infinite alternate; }
-.viewer-bg-pan-down  { animation: bgFadeIn 1.5s ease forwards, bgPanDown  28s ease-in-out 1.5s infinite alternate; }
-
-/* ---- Foreground Ken Burns keyframes (applied to .viewer-pan-wrap) ---- */
-/* All use object-fit:cover on the child image, so no black edges ever appear */
-@keyframes panUp    { 0% { transform: scale(1.06) translateY( 2%); } 100% { transform: scale(1.06) translateY(-2%); } }
-@keyframes panDown  { 0% { transform: scale(1.06) translateY(-2%); } 100% { transform: scale(1.06) translateY( 2%); } }
-@keyframes panLeft  { 0% { transform: scale(1.06) translateX( 2%); } 100% { transform: scale(1.06) translateX(-2%); } }
-@keyframes panRight { 0% { transform: scale(1.06) translateX(-2%); } 100% { transform: scale(1.06) translateX( 2%); } }
-@keyframes panTL    { 0% { transform: scale(1.07) translate( 1.5%,  1.5%); } 100% { transform: scale(1.04) translate(-1.5%, -1.5%); } }
-@keyframes panBR    { 0% { transform: scale(1.04) translate(-1.5%, -1.5%); } 100% { transform: scale(1.07) translate( 1.5%,  1.5%); } }
-@keyframes panTR    { 0% { transform: scale(1.07) translate(-1.5%,  1.5%); } 100% { transform: scale(1.04) translate( 1.5%, -1.5%); } }
-@keyframes panBL    { 0% { transform: scale(1.04) translate( 1.5%, -1.5%); } 100% { transform: scale(1.07) translate(-1.5%,  1.5%); } }
-@keyframes zoomIn   { 0% { transform: scale(1.0);  } 100% { transform: scale(1.07); } }
-@keyframes zoomOut  { 0% { transform: scale(1.08); } 100% { transform: scale(1.0);  } }
-
-/* animation-fill-mode:both holds the start frame before and end frame after */
-.viewer-pan-wrap.pan-up    { animation: panUp    var(--slide-dur, 8s) ease-in-out both; }
-.viewer-pan-wrap.pan-down  { animation: panDown  var(--slide-dur, 8s) ease-in-out both; }
-.viewer-pan-wrap.pan-left  { animation: panLeft  var(--slide-dur, 8s) ease-in-out both; }
-.viewer-pan-wrap.pan-right { animation: panRight var(--slide-dur, 8s) ease-in-out both; }
-.viewer-pan-wrap.pan-tl    { animation: panTL    var(--slide-dur, 8s) ease-in-out both; }
-.viewer-pan-wrap.pan-br    { animation: panBR    var(--slide-dur, 8s) ease-in-out both; }
-.viewer-pan-wrap.pan-tr    { animation: panTR    var(--slide-dur, 8s) ease-in-out both; }
-.viewer-pan-wrap.pan-bl    { animation: panBL    var(--slide-dur, 8s) ease-in-out both; }
-.viewer-pan-wrap.zoom-in   { animation: zoomIn   var(--slide-dur, 8s) ease-in-out both; }
-.viewer-pan-wrap.zoom-out  { animation: zoomOut  var(--slide-dur, 8s) ease-in-out both; }
-
 /* ---- Entrance / exit: pure cross-dissolve, no scale/zoom ---- */
 @keyframes slideFadeIn {
   from { opacity: 0; }
@@ -466,11 +403,6 @@
   from { opacity: 1; }
   to   { opacity: 0; }
 }
-
-.anim-enter-next,
-.anim-enter-prev { animation: slideFadeIn  1.2s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.anim-exit-next,
-.anim-exit-prev  { animation: slideFadeOut 0.9s ease both; }
 
 /* ---- Slideshow progress bar ---- */
 @keyframes progress-drain {
@@ -486,54 +418,6 @@
   z-index: 11;
   pointer-events: none;
   border-radius: 0 2px 2px 0;
-}
-
-.viewer-overlay {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 10;
-  padding: 32px 64px 40px;
-  background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 100%);
-  display: flex;
-  align-items: center;
-  gap: 32px;
-  transition: opacity 400ms ease;
-}
-
-.viewer-overlay.hidden { opacity: 0; pointer-events: none; }
-.viewer-overlay.visible { opacity: 1; pointer-events: auto; }
-
-.viewer-counter {
-  font-size: 26px;
-  color: #ccc;
-  min-width: 120px;
-}
-
-.slideshow-btn {
-  background: rgba(255,255,255,0.15);
-  border: 3px solid #fff;
-  border-radius: 48px;
-  color: #fff;
-  font-size: 30px;
-  font-weight: 600;
-  padding: 18px 48px;
-  flex: 1;
-  max-width: 480px;
-  transition: background 120ms, transform 120ms;
-}
-
-.slideshow-btn:hover,
-.slideshow-btn:focus {
-  background: rgba(255,255,255,0.28);
-  transform: scale(1.03);
-}
-
-.slideshow-btn.playing {
-  background: rgba(232,180,184,0.25);
-  border-color: #e8b4b8;
-  color: #e8b4b8;
 }
 
 .interval-selector {
@@ -562,58 +446,6 @@
   outline-offset: 3px;
   transform: scale(1.08);
 }
-
-.viewer-hint {
-  position: absolute;
-  top: 32px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10;
-  background: rgba(0,0,0,0.7);
-  color: #facc15;
-  font-size: 24px;
-  padding: 10px 28px;
-  border-radius: 8px;
-  pointer-events: none;
-}
-
-.viewer-back-btn {
-  background: none;
-  border: 2px solid #555;
-  border-radius: 8px;
-  color: #aaa;
-  font-size: 26px;
-  padding: 10px 28px;
-  margin-left: auto;
-  transition: all 120ms;
-}
-
-.viewer-back-btn:hover { border-color: #fff; color: #fff; }
-
-.music-badge {
-  font-size: 22px;
-  color: #a5f3fc;
-  background: rgba(0,0,0,0.45);
-  border: 1px solid rgba(165,243,252,0.35);
-  border-radius: 24px;
-  padding: 6px 20px;
-  white-space: nowrap;
-  max-width: 360px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.skip-track-btn {
-  background: rgba(255,255,255,0.1);
-  border: 2px solid #555;
-  border-radius: 8px;
-  color: #aaa;
-  font-size: 26px;
-  padding: 10px 18px;
-  transition: all 120ms;
-}
-
-.skip-track-btn:hover { border-color: #fff; color: #fff; }
 
 /* ============================
    VIEWER INFO PANEL
@@ -799,6 +631,8 @@
   white-space: nowrap;
 }
 
+.viewer-status-track-error { color: #fecaca; }
+
 .viewer-info {
   z-index: 10;
   border-radius: 6px;
@@ -823,6 +657,19 @@
 .viewer-message-error {
   color: #fecaca;
   border-color: rgba(248, 113, 113, 0.7);
+}
+
+.viewer-help {
+  position: absolute;
+  right: 48px;
+  bottom: 32px;
+  z-index: 10;
+  padding: 9px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #dbe4ea;
+  background: rgba(7, 11, 14, 0.76);
+  font-size: 18px;
 }
 
 .viewer-control-panel {
@@ -940,7 +787,7 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .connecting-error { font-size: 28px; color: #f87171; text-align: center; max-width: 900px; }
-.connecting-hint  { font-size: 24px; color: #666; }
+.connecting-hint  { font-size: 24px; color: #9ca3af; }
 .connecting-hint code { color: #aaa; background: #222; padding: 2px 8px; border-radius: 4px; }
 
 .connecting-diagnostics {
@@ -967,6 +814,49 @@
   padding: 80px;
   color: #888;
 }
+
+.state-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  min-height: 360px;
+  padding: 64px;
+  color: #d1d5db;
+  text-align: center;
+}
+
+.state-panel h1,
+.state-panel h2 { color: #f8fafc; font-size: 38px; }
+
+.state-panel p {
+  max-width: 1100px;
+  color: #b8c0ca;
+  font-size: 24px;
+  overflow-wrap: anywhere;
+}
+
+.state-action {
+  min-width: 190px;
+  margin-top: 10px;
+  padding: 14px 28px;
+  border: 2px solid #facc15;
+  border-radius: 8px;
+  color: #fff;
+  background: rgba(250, 204, 21, 0.16);
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.state-action.focused {
+  outline: 3px solid #facc15;
+  outline-offset: 4px;
+  transform: scale(1.04);
+}
+
+.viewer-empty { position: relative; z-index: 12; }
 
 /* ============================
    UPTIME SCREEN
@@ -995,7 +885,14 @@
 
 .uptime-subtitle {
   font-size: 26px;
-  color: #666;
+  color: #9ca3af;
+}
+
+.uptime-refresh-error {
+  width: 100%;
+  color: #fecaca;
+  font-size: 20px;
+  text-align: right;
 }
 
 /* CPU / RAM stat bars */
@@ -1053,7 +950,7 @@
 
 .stat-bar-detail {
   font-size: 22px;
-  color: #555;
+  color: #9ca3af;
   min-width: 160px;
 }
 
@@ -1124,7 +1021,7 @@
 
 .uptime-ping {
   font-size: 24px;
-  color: #666;
+  color: #9ca3af;
   min-width: 100px;
   text-align: right;
 }
