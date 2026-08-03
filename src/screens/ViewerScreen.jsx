@@ -22,6 +22,8 @@ export default function ViewerScreen() {
   const { assets, startIndex = 0 } = screenParams;
 
   const [index, setIndex] = useState(startIndex);
+  const [direction, setDirection] = useState('next');
+  const [prevAssetId, setPrevAssetId] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [intervalSec, setIntervalSec] = useState(5);
   const [uiVisible, setUiVisible] = useState(true);
@@ -61,6 +63,8 @@ export default function ViewerScreen() {
       return;
     }
     slideshowRef.current = setInterval(() => {
+      setPrevAssetId(assets?.[index]?.id ?? null);
+      setDirection('next');
       setIndex((i) => (i + 1) % totalCount);
     }, intervalSec * 1000);
     return () => clearInterval(slideshowRef.current);
@@ -121,12 +125,16 @@ export default function ViewerScreen() {
 
       if (k === KEYS.LEFT) {
         e.preventDefault();
+        setPrevAssetId(assets?.[index]?.id ?? null);
+        setDirection('prev');
         setIndex((i) => (i - 1 + totalCount) % totalCount);
         showUi();
         return;
       }
       if (k === KEYS.RIGHT) {
         e.preventDefault();
+        setPrevAssetId(assets?.[index]?.id ?? null);
+        setDirection('next');
         setIndex((i) => (i + 1) % totalCount);
         showUi();
         return;
@@ -192,6 +200,14 @@ export default function ViewerScreen() {
 
   return (
     <div className="viewer-screen" onClick={showUi}>
+      {/* previous image fades out beneath the incoming one */}
+      {prevAssetId && prevAssetId !== asset.id && !isVideo && (
+        <AuthImage
+          key={`prev-${prevAssetId}`}
+          url={getAssetUrl(serverUrl, token, prevAssetId)}
+          className={`viewer-media anim-exit-${direction}`}
+        />
+      )}
       {isVideo ? (
         <video
           key={asset.id}
@@ -202,7 +218,11 @@ export default function ViewerScreen() {
           loop
         />
       ) : (
-        <AuthImage key={asset.id} url={mediaSrc} className="viewer-media" />
+        <AuthImage
+          key={asset.id}
+          url={mediaSrc}
+          className={`viewer-media anim-enter-${direction}${playing ? ' ken-burns' : ''}`}
+        />
       )}
 
       {/* top-right info panel */}
