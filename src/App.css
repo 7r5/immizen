@@ -538,13 +538,14 @@
 }
 
 .uptime-name {
-  flex: 1;
   font-size: 30px;
   font-weight: 500;
   color: #e0e0e0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 260px;
+  max-width: 380px;
 }
 
 .uptime-status {
@@ -560,4 +561,24 @@
   color: #666;
   min-width: 100px;
   text-align: right;
+}
+
+/* heartbeat history bar */
+.hb-bar {
+  display: flex;
+  gap: 3px;
+  flex: 1;
+  height: 32px;
+  align-items: stretch;
+}
+
+.hb-segment {
+  flex: 1;
+  border-radius: 3px;
+  min-width: 0;
+  transition: opacity 150ms;
+}
+
+.uptime-item.focused .hb-segment {
+  opacity: 0.9;
 }

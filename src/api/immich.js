@@ -46,21 +46,24 @@ export async function getAlbum(serverUrl, token, albumId) {
     return res.json()
 }
 
-// Newer Immich versions don't embed assets in the album response; fetch them separately.
+// Newer Immich versions don't embed assets in the album response; use the search API.
 export async function getAlbumAssets(serverUrl, token, albumId) {
-    const headers = { Authorization: `Bearer ${token}` }
-    // Fetch up to 1000 assets per album; sufficient for personal libraries.
-    const res = await fetch(
-        `${BASE(serverUrl)}/api/assets?albumId=${albumId}&size=1000&page=1`,
-        { headers }
-    )
-    if (!res.ok) throw new Error(`Failed to fetch album assets: ${res.status}`)
+    const headers = {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+    }
+    // POST /api/search/metadata is the reliable cross-version way to list album assets.
+    const res = await fetch(`${BASE(serverUrl)}/api/search/metadata`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ albumId, size: 1000, page: 1 }),
+    })
+    if (!res.ok) throw new Error(`Search metadata failed: ${res.status}`)
     const data = await res.json()
-    // API may return { assets: [...] }, { items: [...] }, or a plain array
-    if (Array.isArray(data)) return data
-    if (Array.isArray(data.assets)) return data.assets
-    if (Array.isArray(data.items)) return data.items
-    return []
+    // Response shape: { assets: { items: [...] } }  or  { items: [...] }
+    const items = data?.assets?.items ?? data?.items ?? []
+    if (!Array.isArray(items)) throw new Error(`Unexpected search response shape: ${JSON.stringify(Object.keys(data))}`)
+    return items
 }
 
 // These return clean URLs without ?accessToken — auth is sent via Authorization header in AuthImage.
@@ -79,4 +82,5 @@ export function getVideoUrl(serverUrl, token, assetId) {
 
 export function getAlbumThumbnailUrl(serverUrl, _token, albumThumbnailAssetId) {
     if (!albumThumbnailAssetId) return null
-    return getThumbnailUrl(serverUrl, null, albumThumbnailAssetId, 'thumbnail')}
+    return getThumbnailUrl(serverUrl, null, albumThumbnailAssetId, 'thumbnail')
+}

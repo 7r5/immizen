@@ -16,6 +16,32 @@ const STATUS_DOT = {
   [STATUS.MAINTENANCE]: { color: "#60a5fa", label: "MAINTENANCE" },
 };
 
+const STATUS_COLOR = {
+  [STATUS.UP]: "#4ade80",
+  [STATUS.DOWN]: "#f87171",
+  [STATUS.PENDING]: "#facc15",
+  [STATUS.MAINTENANCE]: "#60a5fa",
+};
+
+const BAR_SEGMENTS = 60;
+
+function HeartbeatBar({ beats }) {
+  const visible = (beats ?? []).slice(-BAR_SEGMENTS);
+  // left-pad with nulls so the bar is always full width
+  const padded = Array(BAR_SEGMENTS - visible.length).fill(null).concat(visible);
+  return (
+    <div className="hb-bar">
+      {padded.map((beat, i) => (
+        <span
+          key={i}
+          className="hb-segment"
+          style={{ background: beat ? STATUS_COLOR[beat.status] ?? "#555" : "#2a2a2a" }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function statusOf(heartbeat) {
   if (!heartbeat) return STATUS.PENDING;
   return heartbeat.status;
@@ -115,6 +141,7 @@ export default function UptimeScreen() {
                     style={{ background: dot.color }}
                   />
                   <span className="uptime-name">{monitor.name}</span>
+                  <HeartbeatBar beats={data.heartbeats[monitor.id]} />
                   <span className="uptime-status" style={{ color: dot.color }}>
                     {dot.label}
                   </span>
