@@ -62,7 +62,10 @@ export default function ViewerScreen() {
   const [menuIndex, setMenuIndex] = useState(0);
   const [showInfo, setShowInfo] = useState(false);
   const [loadError, setLoadError] = useState(null);
-  const { trackName, skipTrack } = useMusicPlayer({ playing, tracks: TRACKS });
+  const { trackName, audioError, skipTrack } = useMusicPlayer({
+    playing,
+    tracks: TRACKS,
+  });
   const asset = assets[index];
   const isVideo = asset?.type === "VIDEO";
   const uiTimerRef = useRef(null);
@@ -70,6 +73,8 @@ export default function ViewerScreen() {
   const navigationIndexRef = useRef(initialIndex);
   const indexRef = useRef(initialIndex);
   const transitionIdRef = useRef(0);
+  const activeVideoRef = useRef(null);
+  const menuButtonRefs = useRef([]);
   const menuCount = TRACKS.length > 1 ? 7 : 6;
 
   useImagePreloader({ assets, index, serverUrl, token });
@@ -80,6 +85,24 @@ export default function ViewerScreen() {
   }, [index]);
 
   useEffect(() => () => clearTimeout(uiTimerRef.current), []);
+
+  useEffect(() => {
+    if (!isVideo || !activeVideoRef.current) return;
+    activeVideoRef.current.play().catch(() => {
+      setLoadError("La reproducción automática fue bloqueada.");
+    });
+  }, [index, isVideo]);
+
+  useEffect(() => {
+    if (!menuMode) return;
+    const button = menuButtonRefs.current[menuIndex];
+    if (!button) return;
+    try {
+      button.focus({ preventScroll: true });
+    } catch {
+      button.focus();
+    }
+  }, [menuIndex, menuMode]);
 
   const showUi = useCallback(() => {
     setUiVisible(true);
@@ -222,6 +245,13 @@ export default function ViewerScreen() {
       const key = event.keyCode;
       const isBack = key === KEYS.BACK || key === KEYS.BACK_ALT;
       if (menuMode) {
+        const isMenuKey =
+          key === KEYS.LEFT ||
+          key === KEYS.RIGHT ||
+          key === KEYS.ENTER ||
+          key === KEYS.UP ||
+          isBack;
+        if (!isMenuKey) return;
         event.preventDefault();
         if (key === KEYS.LEFT)
           return setMenuIndex((value) => Math.max(value - 1, 0));
@@ -306,11 +336,22 @@ export default function ViewerScreen() {
     };
   }, [asset]);
 
-  if (!asset) return null;
+  if (!asset) {
+    return (
+      <div className="viewer-screen">
+        <div className="state-panel viewer-empty" role="alert">
+          <h1>No hay elementos para mostrar</h1>
+          <button className="state-action focused" onClick={goBack}>
+            Volver
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const renderBackground = (slide, className) => (
     <AuthImage
-      key={`background-${slide.id}-${className}`}
+      key={`background-${slide.id}`}
       url={getThumbnailUrl(serverUrl, token, slide.id, "preview")}
       objectFit="cover"
       className={`viewer-bg ${className}`}
@@ -321,20 +362,25 @@ export default function ViewerScreen() {
     if (slide.type === "VIDEO") {
       return (
         <video
-          key={`media-${slide.id}-${className}`}
+          key={`media-${slide.id}`}
+          ref={slide.id === asset.id ? activeVideoRef : null}
           className={`viewer-media ${className}`}
           src={getVideoUrl(serverUrl, token, slide.id)}
-          autoPlay={!previousSlide || previousSlide.asset.id !== slide.id}
+          autoPlay={slide.id === asset.id}
           controls={false}
           loop={false}
           onEnded={slide.id === asset.id && playing ? advanceSlide : undefined}
           onAnimationEnd={onAnimationEnd}
+          onError={() => {
+            if (slide.id === asset.id)
+              setLoadError("No se pudo reproducir el video.");
+          }}
         />
       );
     }
     return (
       <AuthImage
-        key={`media-${slide.id}-${className}`}
+        key={`media-${slide.id}`}
         url={getAssetUrl(serverUrl, token, slide.id)}
         objectFit="contain"
         className={`viewer-media ${className}`}
@@ -344,7 +390,12 @@ export default function ViewerScreen() {
   };
 
   return (
-    <div className="viewer-screen" onClick={showUi}>
+    <div
+      className="viewer-screen"
+      onClick={showUi}
+      role="region"
+      aria-label="Visor de fotos y videos"
+    >
       {previousSlide &&
         renderBackground(previousSlide.asset, "viewer-bg-leave")}
       {renderBackground(asset, "viewer-bg-enter")}
@@ -367,6 +418,7 @@ export default function ViewerScreen() {
       )}
       {pendingSlide?.waitingForVideo && (
         <video
+          key={`media-${pendingSlide.asset.id}`}
           className="viewer-video-preload"
           src={getVideoUrl(serverUrl, token, pendingSlide.asset.id)}
           muted
@@ -389,19 +441,31 @@ export default function ViewerScreen() {
         />
       )}
       <div className="viewer-vignette" />
-      <div className={`viewer-status ${uiVisible ? "visible" : "hidden"}`}>
+      <div
+        className={`viewer-status ${uiVisible ? "visible" : "hidden"}`}
+        aria-live="polite"
+      >
         <span>
           {index + 1} / {totalCount}
         </span>
         {playing && (
           <span className="viewer-status-playing">Reproduciendo</span>
         )}
-        {trackName && (
-          <span className="viewer-status-track">Musica: {trackName}</span>
+        {trackName && !audioError && (
+          <span className="viewer-status-track">Música: {trackName}</span>
+        )}
+        {audioError && (
+          <span className="viewer-status-track viewer-status-track-error">
+            {audioError}
+          </span>
         )}
       </div>
       {showInfo && uiVisible && (
-        <div className="viewer-info">
+        <div
+          className="viewer-info"
+          role="status"
+          aria-label="Información del elemento"
+        >
           {details.filename && (
             <div className="vi-filename">{details.filename}</div>
           )}
@@ -415,37 +479,64 @@ export default function ViewerScreen() {
         </div>
       )}
       {loadError && (
-        <div className="viewer-message viewer-message-error">{loadError}</div>
+        <div className="viewer-message viewer-message-error" role="alert">
+          {loadError}
+        </div>
       )}
       {pendingSlide && (
-        <div className="viewer-message">Cargando siguiente diapositiva...</div>
+        <div className="viewer-message" role="status" aria-live="polite">
+          Cargando siguiente diapositiva…
+        </div>
       )}
       {menuMode && (
-        <div className="viewer-control-panel">
+        <div
+          className="viewer-control-panel"
+          role="toolbar"
+          aria-label="Controles del visor"
+        >
           <button
+            type="button"
+            ref={(element) => {
+              menuButtonRefs.current[0] = element;
+            }}
             className={`viewer-control-primary ${menuIndex === 0 ? "menu-focused" : ""}`}
             onClick={toggleSlideshow}
+            aria-pressed={playing}
           >
             {playing ? "Pausar" : "Iniciar"}
           </button>
           <div className="interval-selector" aria-label="Intervalo">
             {INTERVALS.map((seconds, offset) => (
               <button
+                type="button"
                 key={seconds}
+                ref={(element) => {
+                  menuButtonRefs.current[offset + 1] = element;
+                }}
                 className={`interval-btn ${intervalSec === seconds ? "active" : ""} ${menuIndex === offset + 1 ? "menu-focused" : ""}`}
                 onClick={() => setIntervalSec(seconds)}
+                aria-pressed={intervalSec === seconds}
               >
                 {seconds}s
               </button>
             ))}
           </div>
           <button
+            type="button"
+            ref={(element) => {
+              menuButtonRefs.current[4] = element;
+            }}
             className={`viewer-control ${menuIndex === 4 ? "menu-focused" : ""}`}
             onClick={() => setShowInfo((visible) => !visible)}
+            aria-pressed={showInfo}
           >
             Info
           </button>
           <button
+            type="button"
+            ref={(element) => {
+              menuButtonRefs.current[5] = element;
+            }}
             className={`viewer-control viewer-control-exit ${menuIndex === 5 ? "menu-focused" : ""}`}
             onClick={() => {
               setPlaying(false);
@@ -456,18 +547,29 @@ export default function ViewerScreen() {
           </button>
           {TRACKS.length > 1 && (
             <button
+              type="button"
+              ref={(element) => {
+                menuButtonRefs.current[6] = element;
+              }}
               className={`viewer-control ${menuIndex === 6 ? "menu-focused" : ""}`}
               onClick={skipTrack}
             >
-              Siguiente musica
+              Siguiente música
             </button>
           )}
+        </div>
+      )}
+      {uiVisible && !menuMode && (
+        <div className="viewer-help" role="status">
+          ↓ Controles&nbsp;&nbsp; · &nbsp;&nbsp;← → Navegar&nbsp;&nbsp; ·
+          &nbsp;&nbsp;OK Reproducir/Pausar
         </div>
       )}
       {playing && !isVideo && !pendingSlide && totalCount > 1 && (
         <div
           key={`progress-${index}-${intervalSec}`}
           className="viewer-progress"
+          aria-hidden="true"
           style={{
             animation: `progress-drain ${intervalSec}s linear forwards`,
           }}

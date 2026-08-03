@@ -49,10 +49,6 @@ export default function AuthImage({
     getCachedImageUrl(url) ??
     (loadedImage.url === url ? loadedImage.src : null);
 
-  useEffect(() => {
-    if (src) onLoadRef.current?.();
-  }, [src]);
-
   const baseStyle = {
     width: "100%",
     height: "100%",
@@ -66,6 +62,9 @@ export default function AuthImage({
       <div
         className={`auth-img-placeholder${className ? ` ${className}` : ""}`}
         style={baseStyle}
+        role={alt ? "img" : undefined}
+        aria-label={alt || undefined}
+        aria-busy="true"
       />
     );
   return (
@@ -75,6 +74,8 @@ export default function AuthImage({
       alt={alt}
       style={baseStyle}
       onAnimationEnd={onAnimationEnd}
+      onLoad={(event) => onLoadRef.current?.(event)}
+      onError={(event) => onErrorRef.current?.(event)}
     />
   );
 }

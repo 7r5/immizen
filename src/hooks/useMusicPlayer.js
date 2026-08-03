@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 
 export default function useMusicPlayer({ playing, tracks }) {
     const [trackIndex, setTrackIndex] = useState(0)
+    const [audioError, setAudioError] = useState(null)
     const audioRef = useRef(null)
     // Ref so the trackIndex effect can read current playing without it as a dep
     const playingRef = useRef(playing)
@@ -11,8 +12,15 @@ export default function useMusicPlayer({ playing, tracks }) {
     // Create the Audio element once and tear it down on unmount
     useEffect(() => {
         const audio = new Audio()
+        const onError = () => setAudioError('No se pudo reproducir la música.')
+        audio.addEventListener('error', onError)
         audioRef.current = audio
-        return () => { audio.pause(); audioRef.current = null }
+        return () => {
+            audio.removeEventListener('error', onError)
+            audio.pause()
+            audio.removeAttribute('src')
+            audioRef.current = null
+        }
     }, [])
 
     // Auto-advance when the current track finishes
@@ -28,29 +36,40 @@ export default function useMusicPlayer({ playing, tracks }) {
     useEffect(() => {
         const audio = audioRef.current
         if (!audio || tracks.length === 0) return
+        setAudioError(null)
         audio.src = tracks[trackIndex % tracks.length]
-        if (playingRef.current) audio.play().catch(() => { })
+        if (playingRef.current) {
+            audio.play().catch(() => setAudioError('La reproducción de música fue bloqueada.'))
+        }
     }, [trackIndex, tracks])
 
     // Start / pause in sync with slideshow
     useEffect(() => {
         const audio = audioRef.current
         if (!audio || tracks.length === 0) return
-        if (playing) audio.play().catch(() => { })
+        if (playing) {
+            audio.play().catch(() => setAudioError('La reproducción de música fue bloqueada.'))
+        }
         else audio.pause()
     }, [playing, tracks.length])
 
-    const trackName = tracks.length > 0
+    const encodedTrackName = tracks.length > 0
         ? tracks[trackIndex % tracks.length]
             .split('/').pop()
             .replace(/\.[^.]+$/, '')
             .replace(/[-_]/g, ' ')
         : null
+    let trackName
+    try {
+        trackName = encodedTrackName ? decodeURIComponent(encodedTrackName) : null
+    } catch {
+        trackName = encodedTrackName
+    }
 
     const skipTrack = () => {
         if (tracks.length < 2) return
         setTrackIndex((i) => (i + 1) % tracks.length)
     }
 
-    return { trackName, skipTrack }
+    return { trackName, audioError, skipTrack }
 }
