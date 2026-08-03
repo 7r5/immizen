@@ -9,18 +9,34 @@ export default function AlbumRow({
   onSelect,
 }) {
   const rowRef = useRef(null);
+  const wrapperRef = useRef(null);
+  const activeCardRef = useRef(null);
 
-  // slide the row to keep focused card visible
+  // Center the active card where possible using its real rendered dimensions.
   useEffect(() => {
-    if (!rowRef.current) return;
-    const cardWidth = 340; // card width + gap
-    rowRef.current.style.transform = `translateX(${-activeCol * cardWidth}px)`;
-  }, [activeCol]);
+    const row = rowRef.current;
+    const wrapper = wrapperRef.current;
+    const card = activeCardRef.current;
+    if (!row || !wrapper || !card) return;
+
+    const maxOffset = Math.max(row.scrollWidth - wrapper.clientWidth, 0);
+    const centeredOffset =
+      card.offsetLeft - (wrapper.clientWidth - card.offsetWidth) / 2;
+    const offset = Math.min(Math.max(centeredOffset, 0), maxOffset);
+    row.style.transform = `translateX(${-offset}px)`;
+
+    if (!focused) return;
+    try {
+      card.focus({ preventScroll: true });
+    } catch {
+      card.focus();
+    }
+  }, [activeCol, albums.length, focused]);
 
   return (
     <div className={`album-row ${focused ? "row-focused" : ""}`}>
       <h2 className="row-title">{title}</h2>
-      <div className="row-track-wrapper">
+      <div className="row-track-wrapper" ref={wrapperRef}>
         <div className="row-track" ref={rowRef}>
           {albums.map((album, i) => (
             <AlbumCard
@@ -28,6 +44,8 @@ export default function AlbumRow({
               album={album}
               index={i}
               focused={focused && activeCol === i}
+              focusRef={activeCol === i ? activeCardRef : null}
+              onSelect={() => onSelect?.(album, i)}
             />
           ))}
         </div>

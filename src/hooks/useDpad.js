@@ -11,6 +11,8 @@ const KEYS = {
     BACK_ALT: 461, // some Tizen models
 }
 
+const isBackKey = (code) => code === KEYS.BACK || code === KEYS.BACK_ALT
+
 /**
  * Manages D-pad focus for a rows-based Netflix layout.
  * rows: array of row lengths, e.g. [5, 3]
@@ -21,28 +23,39 @@ export function useDpadRows({ rows, onSelect, onBack, onSidebarFocus, enabled = 
     const [activeCol, setActiveCol] = useState(0)
 
     const handleKey = useCallback((e) => {
-        if (!enabled) return
         const code = e.keyCode
+
+        if (isBackKey(code) && onBack) {
+            e.preventDefault()
+            onBack()
+            return
+        }
+        if (!enabled) return
+
+        const rowIndex = Math.min(activeRow, Math.max(rows.length - 1, 0))
+        const colIndex = Math.min(activeCol, Math.max((rows[rowIndex] ?? 0) - 1, 0))
 
         if (code === KEYS.ENTER) {
             e.preventDefault()
-            onSelect?.(activeRow, activeCol)
+            onSelect?.(rowIndex, colIndex)
             return
         }
-        if (code === KEYS.BACK || code === KEYS.BACK_ALT) {
-            e.preventDefault()
-            onBack?.()
+        if (rows.length === 0) {
+            if (code === KEYS.LEFT && onSidebarFocus) {
+                e.preventDefault()
+                onSidebarFocus()
+            }
             return
         }
         if (code === KEYS.RIGHT) {
             e.preventDefault()
-            const rowLen = rows[activeRow] ?? 0
-            setActiveCol((c) => Math.min(c + 1, rowLen - 1))
+            const rowLen = rows[rowIndex] ?? 0
+            setActiveCol((c) => Math.min(c + 1, Math.max(rowLen - 1, 0)))
             return
         }
         if (code === KEYS.LEFT) {
             e.preventDefault()
-            if (activeCol === 0) {
+            if (colIndex === 0) {
                 onSidebarFocus?.()
             } else {
                 setActiveCol((c) => c - 1)
@@ -51,14 +64,14 @@ export function useDpadRows({ rows, onSelect, onBack, onSidebarFocus, enabled = 
         }
         if (code === KEYS.DOWN) {
             e.preventDefault()
-            const nextRow = Math.min(activeRow + 1, rows.length - 1)
+            const nextRow = Math.min(rowIndex + 1, rows.length - 1)
             setActiveRow(nextRow)
             setActiveCol((c) => Math.min(c, (rows[nextRow] ?? 1) - 1))
             return
         }
         if (code === KEYS.UP) {
             e.preventDefault()
-            const prevRow = Math.max(activeRow - 1, 0)
+            const prevRow = Math.max(rowIndex - 1, 0)
             setActiveRow(prevRow)
             setActiveCol((c) => Math.min(c, (rows[prevRow] ?? 1) - 1))
         }
@@ -69,9 +82,15 @@ export function useDpadRows({ rows, onSelect, onBack, onSidebarFocus, enabled = 
         return () => window.removeEventListener('keydown', handleKey)
     }, [handleKey])
 
-    const setFocus = (row, col) => { setActiveRow(row); setActiveCol(col) }
+    const safeRow = Math.min(activeRow, Math.max(rows.length - 1, 0))
+    const safeCol = Math.min(activeCol, Math.max((rows[safeRow] ?? 0) - 1, 0))
+    const setFocus = (row, col) => {
+        const nextRow = Math.min(Math.max(row, 0), Math.max(rows.length - 1, 0))
+        setActiveRow(nextRow)
+        setActiveCol(Math.min(Math.max(col, 0), Math.max((rows[nextRow] ?? 0) - 1, 0)))
+    }
 
-    return { activeRow, activeCol, setFocus }
+    return { activeRow: safeRow, activeCol: safeCol, setFocus }
 }
 
 /**
@@ -82,19 +101,21 @@ export function useDpadGrid({ count, cols, onSelect, onBack, enabled = true }) {
     const [focusIndex, setFocusIndex] = useState(0)
 
     const handleKey = useCallback((e) => {
-        if (!enabled) return
         const code = e.keyCode
+
+        if (isBackKey(code) && onBack) {
+            e.preventDefault()
+            onBack()
+            return
+        }
+        if (!enabled) return
 
         if (code === KEYS.ENTER) {
             e.preventDefault()
             onSelect?.(focusIndex)
             return
         }
-        if (code === KEYS.BACK || code === KEYS.BACK_ALT) {
-            e.preventDefault()
-            onBack?.()
-            return
-        }
+        if (count <= 0) return
         if (code === KEYS.RIGHT) {
             e.preventDefault()
             setFocusIndex((i) => Math.min(i + 1, count - 1))
@@ -121,7 +142,10 @@ export function useDpadGrid({ count, cols, onSelect, onBack, enabled = true }) {
         return () => window.removeEventListener('keydown', handleKey)
     }, [handleKey])
 
-    return { focusIndex, setFocusIndex }
+    return {
+        focusIndex: Math.min(focusIndex, Math.max(count - 1, 0)),
+        setFocusIndex,
+    }
 }
 
 /**
@@ -132,27 +156,18 @@ export function useDpad1D({ count, onSelect, onBack, onLeft, onRight, enabled = 
     const [focusIndex, setFocusIndex] = useState(0)
 
     const handleKey = useCallback((e) => {
-        if (!enabled) return
         const code = e.keyCode
+
+        if (isBackKey(code) && onBack) {
+            e.preventDefault()
+            onBack()
+            return
+        }
+        if (!enabled) return
 
         if (code === KEYS.ENTER) {
             e.preventDefault()
             onSelect?.(focusIndex)
-            return
-        }
-        if (code === KEYS.BACK || code === KEYS.BACK_ALT) {
-            e.preventDefault()
-            onBack?.()
-            return
-        }
-        if (code === KEYS.DOWN) {
-            e.preventDefault()
-            setFocusIndex((i) => Math.min(i + 1, count - 1))
-            return
-        }
-        if (code === KEYS.UP) {
-            e.preventDefault()
-            setFocusIndex((i) => Math.max(i - 1, 0))
             return
         }
         if (code === KEYS.LEFT) {
@@ -163,6 +178,18 @@ export function useDpad1D({ count, onSelect, onBack, onLeft, onRight, enabled = 
         if (code === KEYS.RIGHT) {
             e.preventDefault()
             onRight?.()
+            return
+        }
+        if (count <= 0) return
+        if (code === KEYS.DOWN) {
+            e.preventDefault()
+            setFocusIndex((i) => Math.min(i + 1, count - 1))
+            return
+        }
+        if (code === KEYS.UP) {
+            e.preventDefault()
+            setFocusIndex((i) => Math.max(i - 1, 0))
+            return
         }
     }, [enabled, focusIndex, count, onSelect, onBack, onLeft, onRight])
 
@@ -171,25 +198,8 @@ export function useDpad1D({ count, onSelect, onBack, onLeft, onRight, enabled = 
         return () => window.removeEventListener('keydown', handleKey)
     }, [handleKey])
 
-    return { focusIndex, setFocusIndex }
-}
-
-/**
- * Manages D-pad focus for the viewer (left/right navigation + enter for slideshow).
- */
-export function useDpadViewer({ count, onPrev, onNext, onToggleSlideshow, onBack, enabled = true }) {
-    const handleKey = useCallback((e) => {
-        if (!enabled) return
-        const code = e.keyCode
-
-        if (code === KEYS.LEFT) { e.preventDefault(); onPrev?.(); return }
-        if (code === KEYS.RIGHT) { e.preventDefault(); onNext?.(); return }
-        if (code === KEYS.ENTER) { e.preventDefault(); onToggleSlideshow?.(); return }
-        if (code === KEYS.BACK || code === KEYS.BACK_ALT) { e.preventDefault(); onBack?.() }
-    }, [enabled, onPrev, onNext, onToggleSlideshow, onBack, count])
-
-    useEffect(() => {
-        window.addEventListener('keydown', handleKey)
-        return () => window.removeEventListener('keydown', handleKey)
-    }, [handleKey])
+    return {
+        focusIndex: Math.min(focusIndex, Math.max(count - 1, 0)),
+        setFocusIndex,
+    }
 }
