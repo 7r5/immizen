@@ -1,13 +1,23 @@
-const BASE = (serverUrl) => serverUrl.replace(/\/$/, '')
+// In dev the Vite proxy handles CORS; in production (Tizen) use the full URL directly.
+const BASE = (serverUrl) => import.meta.env.DEV ? '' : serverUrl.replace(/\/$/, '')
 
 export async function login(serverUrl, email, password) {
-    const res = await fetch(`${BASE(serverUrl)}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-    })
-    if (!res.ok) throw new Error(`Login failed: ${res.status}`)
+    const url = `${BASE(serverUrl)}/api/auth/login`
+    let res
+    try {
+        res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+        })
+    } catch {
+        // network-level failure: wrong IP, server down, CORS preflight blocked, etc.
+        throw new Error(`Cannot reach server at ${BASE(serverUrl)} — check the IP/port and that Immich is running.`)
+    }
+    if (res.status === 401) throw new Error('Wrong email or password (401).')
+    if (!res.ok) throw new Error(`Server responded with HTTP ${res.status}.`)
     const data = await res.json()
+    if (!data.accessToken) throw new Error('Login succeeded but no access token was returned.')
     return data.accessToken
 }
 

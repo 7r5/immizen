@@ -428,6 +428,21 @@
 
 .connecting-error { font-size: 28px; color: #f87171; text-align: center; max-width: 900px; }
 .connecting-hint  { font-size: 24px; color: #666; }
+.connecting-hint code { color: #aaa; background: #222; padding: 2px 8px; border-radius: 4px; }
+
+.connecting-diagnostics {
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 20px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 26px;
+  color: #aaa;
+  max-width: 900px;
+}
+.diag-label { color: #666; margin-right: 12px; }
 .error-icon { font-size: 64px; color: #f87171; }
 
 .loading-state {
