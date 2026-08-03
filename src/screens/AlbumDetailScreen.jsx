@@ -16,13 +16,11 @@ export default function AlbumDetailScreen() {
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  // How many asset cells are currently in the DOM
-  const [renderCount, setRenderCount] = useState(PAGE);
+  const [reloadKey, setReloadKey] = useState(0);
   const focusedRef = useRef(null);
 
   useEffect(() => {
-    setError(null);
-    setRenderCount(PAGE);
+    let active = true;
     getAlbum(serverUrl, token, albumId)
       .then(async (album) => {
         let found = album.assets ?? album.albumAssets ?? [];
@@ -30,82 +28,114 @@ export default function AlbumDetailScreen() {
         if (found.length === 0 && (album.assetCount ?? 0) > 0) {
           found = await getAlbumAssets(serverUrl, token, albumId);
         }
-        if (found.length === 0) {
-          setError(
-            `0 assets returned. Album keys: [${Object.keys(album).join(", ")}] assetCount=${album.assetCount}`,
+        if (found.length === 0 && (album.assetCount ?? 0) > 0) {
+          throw new Error(
+            "Immich informó elementos, pero no devolvió ninguno.",
           );
         }
+        if (!active) return;
         setAssets(found);
+        setError(null);
         setLoading(false);
       })
-      .catch((err) => {
-        setError(err.message);
+      .catch((requestError) => {
+        if (!active) return;
+        setError(requestError.message);
         setLoading(false);
       });
-  }, [albumId, token, serverUrl]);
+    return () => {
+      active = false;
+    };
+  }, [albumId, token, serverUrl, reloadKey]);
+
+  const retry = () => {
+    setError(null);
+    setLoading(true);
+    setReloadKey((value) => value + 1);
+  };
+
+  const isEmpty = !loading && !error && assets.length === 0;
 
   const { focusIndex } = useDpadGrid({
     count: assets.length,
     cols: COLS,
-    onSelect: (i) => navigate("viewer", { assets, startIndex: i }),
+    onSelect: (i) => {
+      if (error || isEmpty) return retry();
+      if (assets[i]) navigate("viewer", { assets, startIndex: i });
+    },
     onBack: goBack,
     enabled: !loading,
   });
 
-  // Extend the render window before the user reaches its edge
-  useEffect(() => {
-    if (focusIndex + LOAD_AHEAD >= renderCount && renderCount < assets.length) {
-      setRenderCount((c) => Math.min(c + PAGE, assets.length));
-    }
-  }, [focusIndex, renderCount, assets.length]);
+  const renderCount = Math.min(
+    assets.length,
+    Math.max(PAGE, Math.ceil((focusIndex + LOAD_AHEAD + 1) / PAGE) * PAGE),
+  );
 
   // scroll focused thumbnail into view
   useEffect(() => {
-    focusedRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const focused = focusedRef.current;
+    if (!focused) return;
+    focused.scrollIntoView({ block: "nearest", inline: "nearest" });
+    focused.focus({ preventScroll: true });
   }, [focusIndex]);
 
   return (
     <div className="fullscreen-screen album-detail-screen">
       <header className="detail-header">
-        <button className="back-btn" onClick={goBack}>
+        <button className="back-btn" onClick={goBack} aria-label="Volver">
           ‹
         </button>
         <h1 className="detail-title">{albumName}</h1>
-        <span className="detail-count">{assets.length} items</span>
+        <span className="detail-count">{assets.length} elementos</span>
       </header>
 
       {loading ? (
-        <div className="loading-state">
-          <div className="connecting-spinner" />
-          <p>Loading…</p>
+        <div className="loading-state" role="status" aria-live="polite">
+          <div className="connecting-spinner" aria-hidden="true" />
+          <p>Cargando…</p>
         </div>
       ) : error ? (
-        <div className="loading-state">
-          <p
-            style={{
-              color: "#f87171",
-              fontSize: 26,
-              maxWidth: 1400,
-              wordBreak: "break-all",
-            }}
-          >
-            {error}
-          </p>
+        <div className="state-panel" role="alert">
+          <h2>No se pudo cargar el álbum</h2>
+          <p>{error}</p>
+          <button className="state-action focused" onClick={retry}>
+            Reintentar
+          </button>
+        </div>
+      ) : isEmpty ? (
+        <div className="state-panel" role="status">
+          <h2>Este álbum está vacío</h2>
+          <button className="state-action focused" onClick={retry}>
+            Actualizar
+          </button>
         </div>
       ) : (
-        <div className="asset-grid" style={{ "--cols": COLS }}>
+        <div
+          className="asset-grid"
+          style={{ "--cols": COLS }}
+          aria-label="Elementos del álbum"
+        >
           {assets.slice(0, renderCount).map((asset, i) => (
-            <div
+            <button
+              type="button"
               key={asset.id}
               ref={focusIndex === i ? focusedRef : null}
               className={`asset-thumb ${focusIndex === i ? "focused" : ""}`}
               style={{ "--stagger-index": Math.min(i % PAGE, 30) }}
+              tabIndex={focusIndex === i ? 0 : -1}
+              aria-label={`${asset.type === "VIDEO" ? "Video" : "Foto"}: ${asset.originalFileName ?? `elemento ${i + 1}`}`}
+              onClick={() => navigate("viewer", { assets, startIndex: i })}
             >
               <AuthImage
                 url={getThumbnailUrl(serverUrl, token, asset.id, "thumbnail")}
                 alt=""
               />
-              {asset.type === "VIDEO" && <div className="video-badge">▶</div>}
+              {asset.type === "VIDEO" && (
+                <div className="video-badge" aria-hidden="true">
+                  ▶
+                </div>
+              )}
               {asset.exifInfo?.city && (
                 <div className="thumb-location">
                   📍{" "}
@@ -114,7 +144,7 @@ export default function AlbumDetailScreen() {
                     .join(", ")}
                 </div>
               )}
-            </div>
+            </button>
           ))}
         </div>
       )}

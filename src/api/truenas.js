@@ -20,12 +20,10 @@ export async function fetchTrueNASStats(baseUrl, apiKey) {
 
     if (!res.ok) {
         const body = await res.text().catch(() => '');
-        console.log('[TrueNAS REST] error body', body);
         throw new Error(`TrueNAS API ${res.status}: ${body.slice(0, 200)}`);
     }
 
     const graphs = await res.json();
-    console.log('[TrueNAS REST] graphs', graphs);
 
     let cpu = null, ram = null, memTotal = null, memUsed = null;
 
@@ -33,7 +31,7 @@ export async function fetchTrueNASStats(baseUrl, apiKey) {
         if (graph.name === 'cpu') {
             const legend = graph.legend ?? [];
             const idleIdx = legend.indexOf('idle');
-            const latest = graph.data?.at(-1);
+            const latest = graph.data?.[graph.data.length - 1];
             if (latest && idleIdx > 0) {
                 cpu = 100 - latest[idleIdx];
             } else if (graph.aggregations?.mean) {
@@ -45,7 +43,7 @@ export async function fetchTrueNASStats(baseUrl, apiKey) {
 
         if (graph.name === 'memory') {
             const legend = graph.legend ?? [];
-            const latest = graph.data?.at(-1);
+            const latest = graph.data?.[graph.data.length - 1];
             if (latest) {
                 const usedIdx = legend.indexOf('used');
                 const freeIdx = legend.indexOf('free');

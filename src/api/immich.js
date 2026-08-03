@@ -51,18 +51,34 @@ export async function getAlbumAssets(serverUrl, token, albumId) {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
     }
-    // Some versions use albumIds (array), others use albumId (string).
-    const res = await fetch(`${BASE(serverUrl)}/api/search/metadata`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ albumIds: [albumId], size: 1000, page: 1 }),
-    })
-    if (!res.ok) throw new Error(`Search metadata failed: ${res.status}`)
-    const data = await res.json()
-    // Response shape varies: { assets: { items: [...] } } or { items: [...] } or plain array
-    const items = data?.assets?.items ?? data?.assets ?? data?.items ?? (Array.isArray(data) ? data : null)
-    if (!Array.isArray(items)) throw new Error(`Unexpected search response. Keys: [${Object.keys(data).join(', ')}]`)
-    return items
+    const pageSize = 1000
+    const allItems = []
+    let page = 1
+
+    while (page <= 100) {
+        const res = await fetch(`${BASE(serverUrl)}/api/search/metadata`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ albumIds: [albumId], size: pageSize, page }),
+        })
+        if (!res.ok) throw new Error(`Search metadata failed: ${res.status}`)
+        const data = await res.json()
+        // Response shape varies: { assets: { items: [...] } } or { items: [...] } or plain array.
+        const items = data?.assets?.items ?? data?.assets ?? data?.items ?? (Array.isArray(data) ? data : null)
+        if (!Array.isArray(items)) throw new Error(`Unexpected search response. Keys: [${Object.keys(data).join(', ')}]`)
+        allItems.push(...items)
+
+        const reportedNextPage = data?.assets?.nextPage ?? data?.nextPage
+        if (reportedNextPage != null && Number(reportedNextPage) > page) {
+            page = Number(reportedNextPage)
+        } else if (items.length === pageSize) {
+            page += 1
+        } else {
+            break
+        }
+    }
+
+    return allItems
 }
 
 // These return clean URLs without ?accessToken — auth is sent via Authorization header in AuthImage.
@@ -76,7 +92,7 @@ export function getAssetUrl(serverUrl, _token, assetId) {
 
 // Videos use ?accessToken= because <video> src cannot set Authorization header.
 export function getVideoUrl(serverUrl, token, assetId) {
-    return `${BASE(serverUrl)}/api/assets/${assetId}/video/playback?accessToken=${token}`
+    return `${BASE(serverUrl)}/api/assets/${assetId}/video/playback?accessToken=${encodeURIComponent(token)}`
 }
 
 export function getAlbumThumbnailUrl(serverUrl, _token, albumThumbnailAssetId) {

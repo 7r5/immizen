@@ -19,8 +19,8 @@ export function fetchUptimeData(url, username, password) {
 
         const socket = io(socketUrl, {
             path: socketPath,
-            // polling-only: avoids WebSocket upgrade which breaks through the Vite proxy
-            transports: ["polling"],
+            // The development proxy is most reliable with polling; packaged apps prefer WebSocket.
+            transports: import.meta.env.DEV ? ["polling"] : ["websocket", "polling"],
             reconnection: false,
             timeout: 10000,
         });
@@ -28,21 +28,30 @@ export function fetchUptimeData(url, username, password) {
         let monitors = null;
         let heartbeats = null;
         let settled = false;
+        let timeoutId = null;
+
+        const finish = (result, error) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutId);
+            socket.disconnect();
+            if (error) reject(error);
+            else resolve(result);
+        };
 
         const tryResolve = () => {
-            if (!settled && monitors !== null && heartbeats !== null) {
-                settled = true;
-                socket.disconnect();
-                resolve({ monitors, heartbeats });
-            }
+            if (settled || monitors === null) return;
+            const monitorIds = Object.keys(monitors);
+            if (monitorIds.length === 0) return finish({ monitors, heartbeats: {} });
+            if (heartbeats === null) return;
+            const complete = monitorIds.every((id) => Object.hasOwn(heartbeats, id));
+            if (complete) finish({ monitors, heartbeats });
         };
 
         socket.on("connect", () => {
             socket.emit("login", { username, password, token: "" }, (res) => {
                 if (!res?.ok) {
-                    settled = true;
-                    socket.disconnect();
-                    reject(new Error(res?.msg || "Login failed"));
+                    finish(null, new Error(res?.msg || "Login failed"));
                 }
             });
         });
@@ -63,19 +72,13 @@ export function fetchUptimeData(url, username, password) {
         });
 
         socket.on("connect_error", (err) => {
-            if (!settled) {
-                settled = true;
-                reject(new Error(`Connection error: ${err.message}`));
-            }
+            finish(null, new Error(`Connection error: ${err.message}`));
         });
 
-        // fallback timeout in case heartbeatList never fires (no monitors)
-        setTimeout(() => {
-            if (!settled && monitors !== null) {
-                settled = true;
-                socket.disconnect();
-                resolve({ monitors, heartbeats: heartbeats ?? {} });
-            }
+        // Return partial heartbeat history rather than hanging forever on a silent monitor.
+        timeoutId = setTimeout(() => {
+            if (monitors !== null) finish({ monitors, heartbeats: heartbeats ?? {} });
+            else finish(null, new Error("Timed out waiting for the monitor list."));
         }, 5000);
     });
 }
