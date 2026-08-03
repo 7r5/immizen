@@ -153,10 +153,17 @@
   position: relative;
 }
 
-.album-card-thumb img {
+.album-card-thumb img,
+.album-card-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.auth-img-placeholder {
+  width: 100%;
+  height: 100%;
+  background: #1e1e1e;
 }
 
 .album-card-placeholder {

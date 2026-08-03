@@ -38,26 +38,28 @@ export async function getSharedAlbums(serverUrl, token) {
 }
 
 export async function getAlbum(serverUrl, token, albumId) {
-    const res = await fetch(`${BASE(serverUrl)}/api/albums/${albumId}`, {
+    // withoutAssets=false ensures assets are always included in the response
+    const res = await fetch(`${BASE(serverUrl)}/api/albums/${albumId}?withoutAssets=false`, {
         headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error(`Failed to fetch album: ${res.status}`)
     return res.json()
 }
 
-export function getThumbnailUrl(serverUrl, token, assetId, size = 'thumbnail') {
-    return `${BASE(serverUrl)}/api/assets/${assetId}/thumbnail?size=${size}&accessToken=${token}`
+// These return clean URLs without ?accessToken — auth is sent via Authorization header in AuthImage.
+export function getThumbnailUrl(serverUrl, _token, assetId, size = 'thumbnail') {
+    return `${BASE(serverUrl)}/api/assets/${assetId}/thumbnail?size=${size}`
 }
 
-export function getAssetUrl(serverUrl, token, assetId) {
-    return `${BASE(serverUrl)}/api/assets/${assetId}/original?accessToken=${token}`
+export function getAssetUrl(serverUrl, _token, assetId) {
+    return `${BASE(serverUrl)}/api/assets/${assetId}/original`
 }
 
+// Videos use ?accessToken= because <video> src cannot set Authorization header.
 export function getVideoUrl(serverUrl, token, assetId) {
     return `${BASE(serverUrl)}/api/assets/${assetId}/video/playback?accessToken=${token}`
 }
 
-export function getAlbumThumbnailUrl(serverUrl, token, albumThumbnailAssetId) {
+export function getAlbumThumbnailUrl(serverUrl, _token, albumThumbnailAssetId) {
     if (!albumThumbnailAssetId) return null
-    return getThumbnailUrl(serverUrl, token, albumThumbnailAssetId, 'thumbnail')
-}
+    return getThumbnailUrl(serverUrl, null, albumThumbnailAssetId, 'thumbnail')}

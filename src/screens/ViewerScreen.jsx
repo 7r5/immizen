@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useApp } from "../context/AppContext";
 import { getAssetUrl, getVideoUrl } from "../api/immich";
 import { useDpadViewer } from "../hooks/useDpad";
+import AuthImage from "../components/AuthImage";
 
 const INTERVALS = [3, 5, 10];
 const UI_HIDE_DELAY = 3000;
@@ -106,7 +107,7 @@ export default function ViewerScreen() {
           loop
         />
       ) : (
-        <img key={asset.id} className="viewer-media" src={mediaSrc} alt="" />
+        <AuthImage key={asset.id} url={mediaSrc} className="viewer-media" />
       )}
 
       {/* bottom overlay UI */}

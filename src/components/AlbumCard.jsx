@@ -1,5 +1,6 @@
 import { useApp } from "../context/AppContext";
 import { getAlbumThumbnailUrl } from "../api/immich";
+import AuthImage from "./AuthImage";
 
 export default function AlbumCard({ album, focused }) {
   const { token, serverUrl } = useApp();
@@ -13,7 +14,11 @@ export default function AlbumCard({ album, focused }) {
     <div className={`album-card ${focused ? "focused" : ""}`}>
       <div className="album-card-thumb">
         {thumbUrl ? (
-          <img src={thumbUrl} alt={album.albumName} loading="lazy" />
+          <AuthImage
+            url={thumbUrl}
+            className="album-card-img"
+            alt={album.albumName}
+          />
         ) : (
           <div className="album-card-placeholder">◈</div>
         )}

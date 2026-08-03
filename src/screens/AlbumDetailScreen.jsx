@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { getAlbum, getThumbnailUrl } from "../api/immich";
 import { useDpadGrid } from "../hooks/useDpad";
+import AuthImage from "../components/AuthImage";
 
 const COLS = 5;
 
@@ -57,10 +58,9 @@ export default function AlbumDetailScreen() {
               ref={focusIndex === i ? focusedRef : null}
               className={`asset-thumb ${focusIndex === i ? "focused" : ""}`}
             >
-              <img
-                src={getThumbnailUrl(serverUrl, token, asset.id, "thumbnail")}
+              <AuthImage
+                url={getThumbnailUrl(serverUrl, token, asset.id, "thumbnail")}
                 alt=""
-                loading="lazy"
               />
               {asset.type === "VIDEO" && <div className="video-badge">▶</div>}
             </div>
