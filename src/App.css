@@ -335,9 +335,43 @@
   object-fit: contain;
   position: absolute;
   inset: 0;
+  z-index: 1;
 }
 
-/* ---- entrance animations ---- */
+.viewer-bg {
+  position: absolute;
+  inset: -60px;
+  width: calc(100% + 120px);
+  height: calc(100% + 120px);
+  object-fit: cover;
+  filter: blur(28px) brightness(0.28) saturate(0.6);
+  z-index: 0;
+  transform-origin: center;
+}
+
+/* ---- foreground pan keyframes ---- */
+@keyframes panUp    { 0% { transform: scale(1.1) translateY( 5%); } 100% { transform: scale(1.1) translateY(-5%); } }
+@keyframes panDown  { 0% { transform: scale(1.1) translateY(-5%); } 100% { transform: scale(1.1) translateY( 5%); } }
+@keyframes panLeft  { 0% { transform: scale(1.1) translateX( 5%); } 100% { transform: scale(1.1) translateX(-5%); } }
+@keyframes panRight { 0% { transform: scale(1.1) translateX(-5%); } 100% { transform: scale(1.1) translateX( 5%); } }
+
+/* ---- background pan keyframes ---- */
+@keyframes bgPanLeft  { 0% { transform: scale(1.25) translateX(  4%); } 100% { transform: scale(1.25) translateX( -4%); } }
+@keyframes bgPanRight { 0% { transform: scale(1.25) translateX( -4%); } 100% { transform: scale(1.25) translateX(  4%); } }
+@keyframes bgPanUp    { 0% { transform: scale(1.25) translateY(  4%); } 100% { transform: scale(1.25) translateY( -4%); } }
+@keyframes bgPanDown  { 0% { transform: scale(1.25) translateY( -4%); } 100% { transform: scale(1.25) translateY(  4%); } }
+
+.pan-up    { animation: panUp    var(--slide-dur, 8s) ease-in-out infinite alternate; }
+.pan-down  { animation: panDown  var(--slide-dur, 8s) ease-in-out infinite alternate; }
+.pan-left  { animation: panLeft  var(--slide-dur, 8s) ease-in-out infinite alternate; }
+.pan-right { animation: panRight var(--slide-dur, 8s) ease-in-out infinite alternate; }
+
+.bg-pan-left  { animation: bgPanLeft  20s ease-in-out infinite alternate; }
+.bg-pan-right { animation: bgPanRight 20s ease-in-out infinite alternate; }
+.bg-pan-up    { animation: bgPanUp    20s ease-in-out infinite alternate; }
+.bg-pan-down  { animation: bgPanDown  20s ease-in-out infinite alternate; }
+
+/* ---- entrance / exit animations ---- */
 @keyframes enterFromRight {
   from { opacity: 0; transform: translateX(6%); }
   to   { opacity: 1; transform: translateX(0); }
@@ -346,7 +380,6 @@
   from { opacity: 0; transform: translateX(-6%); }
   to   { opacity: 1; transform: translateX(0); }
 }
-/* ---- exit animations ---- */
 @keyframes exitToLeft {
   from { opacity: 1; transform: translateX(0); }
   to   { opacity: 0; transform: translateX(-4%); }
@@ -355,20 +388,11 @@
   from { opacity: 1; transform: translateX(0); }
   to   { opacity: 0; transform: translateX(4%); }
 }
-/* ---- Ken Burns slow zoom ---- */
-@keyframes kenBurns {
-  0%   { transform: scale(1)    translate(0,    0); }
-  33%  { transform: scale(1.06) translate(1%,  -1%); }
-  66%  { transform: scale(1.09) translate(-1%,  0.5%); }
-  100% { transform: scale(1.05) translate(0.5%, 1%); }
-}
 
 .anim-enter-next { animation: enterFromRight 0.55s cubic-bezier(0.25,0.46,0.45,0.94) both; }
 .anim-enter-prev { animation: enterFromLeft  0.55s cubic-bezier(0.25,0.46,0.45,0.94) both; }
 .anim-exit-next  { animation: exitToLeft     0.55s cubic-bezier(0.25,0.46,0.45,0.94) both; }
 .anim-exit-prev  { animation: exitToRight    0.55s cubic-bezier(0.25,0.46,0.45,0.94) both; }
-/* Ken Burns runs for the full interval duration; JS sets intervalSec inline if needed */
-.ken-burns { animation: kenBurns 8s ease-in-out infinite alternate; }
 
 .viewer-overlay {
   position: absolute;
@@ -469,6 +493,31 @@
 }
 
 .viewer-back-btn:hover { border-color: #fff; color: #fff; }
+
+.music-badge {
+  font-size: 22px;
+  color: #a5f3fc;
+  background: rgba(0,0,0,0.45);
+  border: 1px solid rgba(165,243,252,0.35);
+  border-radius: 24px;
+  padding: 6px 20px;
+  white-space: nowrap;
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.skip-track-btn {
+  background: rgba(255,255,255,0.1);
+  border: 2px solid #555;
+  border-radius: 8px;
+  color: #aaa;
+  font-size: 26px;
+  padding: 10px 18px;
+  transition: all 120ms;
+}
+
+.skip-track-btn:hover { border-color: #fff; color: #fff; }
 
 /* ============================
    VIEWER INFO PANEL

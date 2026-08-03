@@ -93,7 +93,10 @@ export default function AlbumDetailScreen() {
               {asset.type === "VIDEO" && <div className="video-badge">▶</div>}
               {asset.exifInfo?.city && (
                 <div className="thumb-location">
-                  📍 {[asset.exifInfo.city, asset.exifInfo.country].filter(Boolean).join(', ')}
+                  📍{" "}
+                  {[asset.exifInfo.city, asset.exifInfo.country]
+                    .filter(Boolean)
+                    .join(", ")}
                 </div>
               )}
             </div>

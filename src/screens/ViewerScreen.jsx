@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useApp } from "../context/AppContext";
 import { getAssetUrl, getVideoUrl } from "../api/immich";
 import AuthImage from "../components/AuthImage";
+import useMusicPlayer from "../hooks/useMusicPlayer";
+import TRACKS from "../config/music";
 
 const INTERVALS = [3, 5, 10];
 const UI_HIDE_DELAY = 3000;
-const MENU_COUNT = 5;
 
 const KEYS = {
   LEFT: 37,
@@ -22,13 +23,16 @@ export default function ViewerScreen() {
   const { assets, startIndex = 0 } = screenParams;
 
   const [index, setIndex] = useState(startIndex);
-  const [direction, setDirection] = useState('next');
+  const [direction, setDirection] = useState("next");
   const [prevAssetId, setPrevAssetId] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [intervalSec, setIntervalSec] = useState(5);
   const [uiVisible, setUiVisible] = useState(true);
   const [menuMode, setMenuMode] = useState(false);
   const [menuIndex, setMenuIndex] = useState(0);
+  const { trackName, skipTrack } = useMusicPlayer({ playing, tracks: TRACKS });
+  // skip button appears only when there are multiple tracks to cycle through
+  const menuCount = TRACKS.length > 1 ? 6 : 5;
 
   const asset = assets?.[index];
   const isVideo = asset?.type === "VIDEO";
@@ -64,7 +68,7 @@ export default function ViewerScreen() {
     }
     slideshowRef.current = setInterval(() => {
       setPrevAssetId(assets?.[index]?.id ?? null);
-      setDirection('next');
+      setDirection("next");
       setIndex((i) => (i + 1) % totalCount);
     }, intervalSec * 1000);
     return () => clearInterval(slideshowRef.current);
@@ -92,8 +96,11 @@ export default function ViewerScreen() {
         setPlaying(false);
         goBack();
       }
+      if (i === 5) {
+        skipTrack();
+      }
     },
-    [toggleSlideshow, goBack],
+    [toggleSlideshow, goBack, skipTrack],
   );
 
   useEffect(() => {
@@ -108,7 +115,7 @@ export default function ViewerScreen() {
           return;
         }
         if (k === KEYS.RIGHT) {
-          setMenuIndex((i) => Math.min(i + 1, MENU_COUNT - 1));
+          setMenuIndex((i) => Math.min(i + 1, menuCount - 1));
           return;
         }
         if (k === KEYS.ENTER) {
@@ -126,7 +133,7 @@ export default function ViewerScreen() {
       if (k === KEYS.LEFT) {
         e.preventDefault();
         setPrevAssetId(assets?.[index]?.id ?? null);
-        setDirection('prev');
+        setDirection("prev");
         setIndex((i) => (i - 1 + totalCount) % totalCount);
         showUi();
         return;
@@ -134,7 +141,7 @@ export default function ViewerScreen() {
       if (k === KEYS.RIGHT) {
         e.preventDefault();
         setPrevAssetId(assets?.[index]?.id ?? null);
-        setDirection('next');
+        setDirection("next");
         setIndex((i) => (i + 1) % totalCount);
         showUi();
         return;
@@ -167,6 +174,7 @@ export default function ViewerScreen() {
     toggleSlideshow,
     showUi,
     goBack,
+    menuCount,
   ]);
 
   if (!asset) return null;
@@ -174,6 +182,21 @@ export default function ViewerScreen() {
   const mediaSrc = isVideo
     ? getVideoUrl(serverUrl, token, asset.id)
     : getAssetUrl(serverUrl, token, asset.id);
+
+  // pick pan direction based on aspect ratio; randomise between two options per asset
+  const { panClass, bgPanClass } = useMemo(() => {
+    const exif = asset.exifInfo ?? {};
+    const w = exif.exifImageWidth ?? 0;
+    const h = exif.exifImageHeight ?? 0;
+    const portrait = h > w;
+    const fgDirs = portrait
+      ? ["pan-up", "pan-down"]
+      : ["pan-left", "pan-right"];
+    const bgDirs = ["bg-pan-left", "bg-pan-right", "bg-pan-up", "bg-pan-down"];
+    const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    return { panClass: rand(fgDirs), bgPanClass: rand(bgDirs) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asset.id]);
 
   const exif = asset.exifInfo ?? {};
   const takenAt = asset.localDateTime ?? asset.fileCreatedAt;
@@ -200,6 +223,15 @@ export default function ViewerScreen() {
 
   return (
     <div className="viewer-screen" onClick={showUi}>
+      {/* blurred background — same photo zoomed+blurred, slow random pan */}
+      {!isVideo && (
+        <AuthImage
+          key={`bg-${asset.id}`}
+          url={mediaSrc}
+          objectFit="cover"
+          className={`viewer-bg ${bgPanClass}`}
+        />
+      )}
       {/* previous image fades out beneath the incoming one */}
       {prevAssetId && prevAssetId !== asset.id && !isVideo && (
         <AuthImage
@@ -221,7 +253,8 @@ export default function ViewerScreen() {
         <AuthImage
           key={asset.id}
           url={mediaSrc}
-          className={`viewer-media anim-enter-${direction}${playing ? ' ken-burns' : ''}`}
+          objectFit="contain"
+          className={`viewer-media anim-enter-${direction}${playing ? ` ${panClass}` : ""}`}
         />
       )}
 
@@ -241,6 +274,8 @@ export default function ViewerScreen() {
         <div className="viewer-counter">
           {index + 1} / {totalCount}
         </div>
+
+        {trackName && <div className="music-badge">&#9835; {trackName}</div>}
 
         <button
           className={`slideshow-btn ${playing ? "playing" : ""} ${menuMode && menuIndex === 0 ? "menu-focused" : ""}`}
@@ -270,6 +305,15 @@ export default function ViewerScreen() {
         >
           &#8249; Back
         </button>
+
+        {TRACKS.length > 1 && (
+          <button
+            className={`skip-track-btn ${menuMode && menuIndex === 5 ? "menu-focused" : ""}`}
+            onClick={skipTrack}
+          >
+            &#9197;
+          </button>
+        )}
       </div>
 
       {menuMode && (
