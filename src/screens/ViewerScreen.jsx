@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useApp } from "../context/AppContext";
-import { getAssetUrl, getVideoUrl } from "../api/immich";
+import { getAssetUrl, getVideoUrl, getThumbnailUrl } from "../api/immich";
 import AuthImage from "../components/AuthImage";
 import useMusicPlayer from "../hooks/useMusicPlayer";
+import useImagePreloader from "../hooks/useImagePreloader";
 import TRACKS from "../config/music";
 
 const INTERVALS = [3, 5, 10];
@@ -31,6 +32,7 @@ export default function ViewerScreen() {
   const [menuMode, setMenuMode] = useState(false);
   const [menuIndex, setMenuIndex] = useState(0);
   const { trackName, skipTrack } = useMusicPlayer({ playing, tracks: TRACKS });
+  useImagePreloader({ assets, index, serverUrl, token });
   // skip button appears only when there are multiple tracks to cycle through
   const menuCount = TRACKS.length > 1 ? 6 : 5;
 
@@ -227,7 +229,7 @@ export default function ViewerScreen() {
       {!isVideo && (
         <AuthImage
           key={`bg-${asset.id}`}
-          url={mediaSrc}
+          url={getThumbnailUrl(serverUrl, token, asset.id, "preview")}
           objectFit="cover"
           className={`viewer-bg ${bgPanClass}`}
         />

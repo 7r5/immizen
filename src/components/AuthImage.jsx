@@ -4,6 +4,16 @@ import { useApp } from "../context/AppContext";
 // Module-level cache survives re-renders; blob URLs persist for the session lifetime.
 const blobCache = new Map();
 
+export function preloadImage(url, token) {
+  if (!url || !token || blobCache.has(url)) return;
+  fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    .then((r) => (r.ok ? r.blob() : Promise.reject()))
+    .then((blob) => {
+      if (!blobCache.has(url)) blobCache.set(url, URL.createObjectURL(blob));
+    })
+    .catch(() => {});
+}
+
 export default function AuthImage({
   url,
   className,
