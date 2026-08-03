@@ -38,8 +38,7 @@ export async function getSharedAlbums(serverUrl, token) {
 }
 
 export async function getAlbum(serverUrl, token, albumId) {
-    // withoutAssets=false ensures assets are always included in the response
-    const res = await fetch(`${BASE(serverUrl)}/api/albums/${albumId}?withoutAssets=false`, {
+    const res = await fetch(`${BASE(serverUrl)}/api/albums/${albumId}`, {
         headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error(`Failed to fetch album: ${res.status}`)
@@ -52,17 +51,17 @@ export async function getAlbumAssets(serverUrl, token, albumId) {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
     }
-    // POST /api/search/metadata is the reliable cross-version way to list album assets.
+    // Some versions use albumIds (array), others use albumId (string).
     const res = await fetch(`${BASE(serverUrl)}/api/search/metadata`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ albumId, size: 1000, page: 1 }),
+        body: JSON.stringify({ albumIds: [albumId], size: 1000, page: 1 }),
     })
     if (!res.ok) throw new Error(`Search metadata failed: ${res.status}`)
     const data = await res.json()
-    // Response shape: { assets: { items: [...] } }  or  { items: [...] }
-    const items = data?.assets?.items ?? data?.items ?? []
-    if (!Array.isArray(items)) throw new Error(`Unexpected search response shape: ${JSON.stringify(Object.keys(data))}`)
+    // Response shape varies: { assets: { items: [...] } } or { items: [...] } or plain array
+    const items = data?.assets?.items ?? data?.assets ?? data?.items ?? (Array.isArray(data) ? data : null)
+    if (!Array.isArray(items)) throw new Error(`Unexpected search response. Keys: [${Object.keys(data).join(', ')}]`)
     return items
 }
 
