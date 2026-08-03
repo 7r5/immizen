@@ -46,6 +46,23 @@ export async function getAlbum(serverUrl, token, albumId) {
     return res.json()
 }
 
+// Newer Immich versions don't embed assets in the album response; fetch them separately.
+export async function getAlbumAssets(serverUrl, token, albumId) {
+    const headers = { Authorization: `Bearer ${token}` }
+    // Fetch up to 1000 assets per album; sufficient for personal libraries.
+    const res = await fetch(
+        `${BASE(serverUrl)}/api/assets?albumId=${albumId}&size=1000&page=1`,
+        { headers }
+    )
+    if (!res.ok) throw new Error(`Failed to fetch album assets: ${res.status}`)
+    const data = await res.json()
+    // API may return { assets: [...] }, { items: [...] }, or a plain array
+    if (Array.isArray(data)) return data
+    if (Array.isArray(data.assets)) return data.assets
+    if (Array.isArray(data.items)) return data.items
+    return []
+}
+
 // These return clean URLs without ?accessToken — auth is sent via Authorization header in AuthImage.
 export function getThumbnailUrl(serverUrl, _token, assetId, size = 'thumbnail') {
     return `${BASE(serverUrl)}/api/assets/${assetId}/thumbnail?size=${size}`

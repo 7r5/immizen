@@ -12,6 +12,14 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         },
+        // proxy for Uptime Kuma socket.io (bypasses CORS in dev)
+        '/uptime-proxy': {
+          target: env.VITE_UPTIME_URL || 'http://localhost:31050',
+          changeOrigin: true,
+          ws: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/uptime-proxy/, ''),
+        },
       },
     },
   }

@@ -13,8 +13,13 @@ export { STATUS };
  */
 export function fetchUptimeData(url, username, password) {
     return new Promise((resolve, reject) => {
-        const socket = io(url, {
-            transports: ["websocket"],
+        // in dev, route through Vite proxy to avoid CORS; in prod connect directly
+        const socketUrl = import.meta.env.DEV ? window.location.origin : url;
+        const socketPath = import.meta.env.DEV ? "/uptime-proxy/socket.io" : "/socket.io";
+
+        const socket = io(socketUrl, {
+            path: socketPath,
+            transports: ["polling", "websocket"],
             reconnection: false,
             timeout: 10000,
         });

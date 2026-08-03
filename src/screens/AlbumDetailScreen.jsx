@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useApp } from "../context/AppContext";
-import { getAlbum, getThumbnailUrl } from "../api/immich";
+import { getAlbum, getAlbumAssets, getThumbnailUrl } from "../api/immich";
 import { useDpadGrid } from "../hooks/useDpad";
 import AuthImage from "../components/AuthImage";
 
@@ -17,16 +17,24 @@ export default function AlbumDetailScreen() {
   useEffect(() => {
     setError(null);
     getAlbum(serverUrl, token, albumId)
-      .then((album) => {
-        // Try both common field names across Immich versions
-        const found = album.assets ?? album.albumAssets ?? [];
-        setAssets(found);
-        if (found.length === 0) {
-          setError(`API returned 0 assets. Raw keys: ${Object.keys(album).join(', ')}. assetCount=${album.assetCount}`);
+      .then(async (album) => {
+        let found = album.assets ?? album.albumAssets ?? [];
+        // Newer Immich versions don't embed assets; fall back to the assets endpoint.
+        if (found.length === 0 && (album.assetCount ?? 0) > 0) {
+          found = await getAlbumAssets(serverUrl, token, albumId);
         }
+        if (found.length === 0) {
+          setError(
+            `0 assets returned. Album keys: [${Object.keys(album).join(", ")}] assetCount=${album.assetCount}`,
+          );
+        }
+        setAssets(found);
         setLoading(false);
       })
-      .catch((err) => { setError(err.message); setLoading(false); });
+      .catch((err) => {
+        setError(err.message);
+        setLoading(false);
+      });
   }, [albumId, token, serverUrl]);
 
   const { focusIndex } = useDpadGrid({
@@ -59,7 +67,16 @@ export default function AlbumDetailScreen() {
         </div>
       ) : error ? (
         <div className="loading-state">
-          <p style={{ color: '#f87171', fontSize: 26, maxWidth: 1400, wordBreak: 'break-all' }}>{error}</p>
+          <p
+            style={{
+              color: "#f87171",
+              fontSize: 26,
+              maxWidth: 1400,
+              wordBreak: "break-all",
+            }}
+          >
+            {error}
+          </p>
         </div>
       ) : (
         <div className="asset-grid" style={{ "--cols": COLS }}>
