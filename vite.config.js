@@ -15,7 +15,7 @@ function musicTracksPlugin() {
       return readdirSync(musicDir)
         .filter((f) => AUDIO_RE.test(f))
         .sort()
-        .map((f) => `/music/${f}`)
+        .map((f) => `./music/${encodeURIComponent(f)}`)
     } catch {
       return []
     }
@@ -50,6 +50,10 @@ export default defineConfig(({ mode }) => {
   return {
     base: './',
     plugins: [react(), musicTracksPlugin()],
+    build: {
+      // Tizen 7 TVs use a Chromium 94-class web runtime.
+      target: 'chrome94',
+    },
     server: {
       proxy: {
         '/api': {
