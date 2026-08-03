@@ -32,6 +32,7 @@ export default function AuthImage({ url, className, alt = "" }) {
   }, [url, token]);
 
   if (!src)
-    return <div className={`auth-img-placeholder ${className ?? ""}`} />;
-  return <img className={className} src={src} alt={alt} />;
+    return <div className={`auth-img-placeholder${className ? ` ${className}` : ''}`} />;
+  // style ensures the img fills its container when no className provides sizing
+  return <img className={className} src={src} alt={alt} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />;
 }
