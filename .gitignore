@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Tizen build output (regenerated from dist by scripts/sync-tizen-dist.mjs)
+Debug/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
