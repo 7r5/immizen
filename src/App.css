@@ -532,6 +532,8 @@
   z-index: 1;
   opacity: 1;
   animation: slideFadeOut 1.4s ease both;
+  /* Glide the panned transform back to rest instead of snapping on exit */
+  transition: transform 1.4s ease;
 }
 
 @keyframes background-fade-in {

@@ -311,6 +311,22 @@ export default function ViewerScreen() {
     if (!pendingSlide) requestRelativeSlide(1);
   }, [pendingSlide, requestRelativeSlide]);
 
+  // Ref keeps the timer from restarting when unrelated state (e.g. animations
+  // toggle) changes advanceSlide's identity.
+  const advanceSlideRef = useRef(advanceSlide);
+  useEffect(() => {
+    advanceSlideRef.current = advanceSlide;
+  }, [advanceSlide]);
+
+  useEffect(() => {
+    if (!playing || isVideo || pendingSlide || totalCount < 2) return;
+    const timer = setTimeout(
+      () => advanceSlideRef.current(),
+      intervalSec * 1000,
+    );
+    return () => clearTimeout(timer);
+  }, [index, intervalSec, isVideo, pendingSlide, playing, totalCount]);
+
   const toggleSlideshow = useCallback(() => {
     if (totalCount < 2) return;
     setPlaying((wasPlaying) => {
