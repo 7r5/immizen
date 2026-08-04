@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { readdirSync } from 'fs'
 import { resolve } from 'path'
+import { execSync } from 'child_process'
 
 const AUDIO_RE = /\.(mp3|m4a|ogg|wav|flac)$/i
 const VIRTUAL_ID = 'virtual:music-tracks'
@@ -45,11 +46,25 @@ function musicTracksPlugin() {
   }
 }
 
+function getCommitInfo() {
+  try {
+    const hash = execSync('git rev-parse --short=7 HEAD', { encoding: 'utf8' }).trim()
+    const subject = execSync('git log -1 --pretty=%s', { encoding: 'utf8' }).trim()
+    return { hash, subject }
+  } catch {
+    return { hash: 'unknown', subject: 'commit unavailable' }
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  const commitInfo = getCommitInfo()
   return {
     base: './',
     plugins: [react(), musicTracksPlugin()],
+    define: {
+      __APP_COMMIT_INFO__: JSON.stringify(commitInfo),
+    },
     build: {
       // Tizen 7 TVs use a Chromium 94-class web runtime.
       target: 'chrome94',

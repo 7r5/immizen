@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { useDpad1D } from "../hooks/useDpad";
+import { COMMIT_INFO } from "../buildInfo";
 
 const MENU_ITEMS = [
   { id: "albums", label: "Álbumes", icon: "▦" },
@@ -70,6 +71,17 @@ export default function MainLayout({ children, focusRegion, onContentFocus }) {
             </button>
           ))}
         </nav>
+        <div className="sidebar-footer">
+          <div
+            className="commit-badge commit-badge--sidebar"
+            aria-hidden="true"
+          >
+            <span className="commit-badge-hash">{COMMIT_INFO.hash}</span>
+            <span className="commit-badge-text">
+              {COMMIT_INFO.subject.slice(0, 15)}
+            </span>
+          </div>
+        </div>
       </aside>
       <main className="content-area" id="main-content">
         {children}

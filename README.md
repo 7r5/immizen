@@ -6,16 +6,18 @@ A Netflix-style [Immich](https://immich.app) viewer for Samsung Smart TVs (Tizen
 
 - Auto-login with credentials stored locally — no login screen
 - Netflix-style sidebar layout with two sections: **Albums** and **Uptime**
-- Album browser: horizontal rows for your own and shared albums
+- Album browser: year-grouped sections with larger cards, using a sampled month/year label per album
 - Full-screen photo viewer with left/right D-pad navigation
-- Video playback in full screen
+- Video playback in full screen, with orientation handling for rotated assets
 - Slideshow mode with configurable interval (3 / 5 / 10 seconds)
-- Ambient music during the slideshow — tracks are auto-discovered from `public/music/`, with skip-track control
+- Animated slideshow transitions with a toggle to enable/disable fade and motion
+- Ambient music during the slideshow — tracks are auto-discovered from `public/music/`, shuffled randomly, with skip-track control
 - Smooth transitions: images are cached and next/previous slides are preloaded before each transition
 - Aspect-aware motion: landscape photos pan/zoom subtly, portrait photos stay fully visible, with a blurred background fill
 - Uptime dashboard: live Uptime Kuma monitor list with heartbeat bars, plus TrueNAS CPU/RAM usage
 - D-pad-only navigation optimized for TV remote (1920×1080)
-- Semantic controls, visible focus, reduced-motion support, and bounded image caching
+- Semantic controls, visible focus, reduced-motion support, bounded image caching, and a randomized UI accent theme on each app launch
+- Footer badge showing the current git commit hash and commit subject snippet
 
 ## Requirements
 
@@ -58,9 +60,13 @@ The Uptime and TrueNAS variables are optional: leave them out and the Uptime scr
 
 **3. Add slideshow music (optional)**
 
-Drop any `.mp3`, `.m4a`, `.ogg`, `.wav`, or `.flac` files into `public/music/`. They are auto-discovered at build time and during dev — no manual registration needed. Tracks play in order during the slideshow and can be skipped from the viewer controls.
+Drop any `.mp3`, `.m4a`, `.ogg`, `.wav`, or `.flac` files into `public/music/`. They are auto-discovered at build time and during dev — no manual registration needed. Tracks are shuffled randomly for each session and can be skipped from the viewer controls.
 
-**4. Run in development**
+**4. Favicon**
+
+The web favicon uses the existing `public/icon.png` file.
+
+**5. Run in development**
 
 ```bash
 npm run dev
@@ -68,7 +74,7 @@ npm run dev
 
 Open `http://localhost:5173` in a browser. The app connects to Immich automatically on load. In dev, Vite proxies requests to Immich, Uptime Kuma, and TrueNAS to sidestep CORS and self-signed certificates.
 
-**5. Build for Tizen**
+**6. Build for Tizen**
 
 ```bash
 npm run build
@@ -111,7 +117,11 @@ npm run check
 | ↑ / Back (in controls) | Close viewer controls. |
 | Back (viewer) | Return to the album. |
 
-Photos wait for their full image and background preview before a transition begins. Slides use a short cross-dissolve with restrained motion by default; the viewer controls now include an animations switch to turn fade and motion on or off. Videos play through completely before the slideshow advances. Music tracks are chosen in a random order.
+Photos wait for their full image and background preview before a transition begins. Slides use a short cross-dissolve with restrained motion by default; the viewer controls now include an animations switch to turn fade and motion on or off. Videos are de-rotated/corrected based on metadata when needed. Music tracks are chosen in a random order.
+
+### Albums browser
+
+Albums are displayed in year sections. Each album shows a date range derived from a small sample of its photos, and the app keeps the list in vertical scroll order for TV navigation.
 
 ## Project Structure
 

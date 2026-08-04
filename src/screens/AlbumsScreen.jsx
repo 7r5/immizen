@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { getAlbums, getSharedAlbums, getAlbumAssetSample } from "../api/immich";
-import { useDpadGrid } from "../hooks/useDpad";
 import MainLayout from "./MainLayout";
 import AlbumCard from "../components/AlbumCard";
 
@@ -16,8 +15,10 @@ export default function AlbumsScreen() {
   const [reloadKey, setReloadKey] = useState(0);
   const [focusRegion, setFocusRegion] = useState("content"); // 'sidebar' | 'content'
   const [albumDateMetaById, setAlbumDateMetaById] = useState({});
+  const [focusIndex, setFocusIndex] = useState(0);
   const stateActionRef = useRef(null);
   const focusedCardRef = useRef(null);
+  const sectionRefs = useRef(new Map());
   const albumDateCacheRef = useRef(new Map());
 
   const monthLabel = (date) =>
@@ -93,7 +94,10 @@ export default function AlbumsScreen() {
     };
   }, [token, serverUrl, reloadKey]);
 
-  const allAlbums = [...ownAlbums, ...sharedAlbums];
+  const allAlbums = useMemo(
+    () => [...ownAlbums, ...sharedAlbums],
+    [ownAlbums, sharedAlbums],
+  );
 
   useEffect(() => {
     if (loading || allAlbums.length === 0) {
@@ -165,6 +169,16 @@ export default function AlbumsScreen() {
     return [...groups.entries()].map(([year, items]) => ({ year, items }));
   }, [orderedAlbums]);
 
+  const indexContextByAlbumIndex = useMemo(() => {
+    const map = new Map();
+    sections.forEach((section, sectionIndex) => {
+      section.items.forEach((item, position) => {
+        map.set(item.index, { sectionIndex, position, section });
+      });
+    });
+    return map;
+  }, [sections]);
+
   const retry = () => {
     setError(null);
     setLoading(true);
@@ -179,22 +193,6 @@ export default function AlbumsScreen() {
     });
   };
 
-  const { focusIndex, setFocusIndex } = useDpadGrid({
-    count: orderedAlbums.length,
-    cols: ALBUM_GRID_COLS,
-    enabled: focusRegion === "content" && !loading,
-    onSelect: (index) => {
-      if (error || orderedAlbums.length === 0) {
-        retry();
-        return;
-      }
-      const album = orderedAlbums[index]?.album;
-      openAlbum(album);
-    },
-    onBack: goBack,
-    onSidebarFocus: () => setFocusRegion("sidebar"),
-  });
-
   useEffect(() => {
     if (focusRegion === "content" && !loading && orderedAlbums.length === 0) {
       stateActionRef.current?.focus();
@@ -204,16 +202,97 @@ export default function AlbumsScreen() {
   useEffect(() => {
     const focusedCard = focusedCardRef.current;
     if (!focusedCard) return;
+    const context = indexContextByAlbumIndex.get(focusIndex);
+    if (!context) return;
+
+    if (context.position === 0) {
+      const sectionElement = sectionRefs.current.get(context.section.year);
+      if (sectionElement) {
+        sectionElement.scrollIntoView({ block: "start", inline: "nearest" });
+        focusedCard.focus({ preventScroll: true });
+        return;
+      }
+    }
+
     focusedCard.scrollIntoView({ block: "nearest", inline: "nearest" });
     focusedCard.focus({ preventScroll: true });
-  }, [focusIndex]);
+  }, [focusIndex, indexContextByAlbumIndex]);
+
+  useEffect(() => {
+    if (focusRegion !== "content" || loading || orderedAlbums.length === 0)
+      return;
+
+    const onKeyDown = (event) => {
+      const key = event.keyCode;
+      const current = indexContextByAlbumIndex.get(focusIndex);
+
+      if (!current) return;
+
+      if (key === 10009 || key === 461) {
+        event.preventDefault();
+        goBack();
+        return;
+      }
+
+      if (key === 13) {
+        event.preventDefault();
+        openAlbum(orderedAlbums[focusIndex]?.album);
+        return;
+      }
+
+      if (key === 39) {
+        event.preventDefault();
+        const nextItem = current.section.items[current.position + 1];
+        if (nextItem) setFocusIndex(nextItem.index);
+        return;
+      }
+
+      if (key === 37) {
+        event.preventDefault();
+        const prevItem = current.section.items[current.position - 1];
+        if (prevItem) {
+          setFocusIndex(prevItem.index);
+        } else if (focusIndex === 0) {
+          setFocusRegion("sidebar");
+        }
+        return;
+      }
+
+      if (key === 40) {
+        event.preventDefault();
+        const nextSection = sections[current.sectionIndex + 1];
+        if (nextSection?.items?.length)
+          setFocusIndex(nextSection.items[0].index);
+        return;
+      }
+
+      if (key === 38) {
+        event.preventDefault();
+        const previousSection = sections[current.sectionIndex - 1];
+        if (previousSection?.items?.length)
+          setFocusIndex(previousSection.items[0].index);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    focusIndex,
+    focusRegion,
+    goBack,
+    indexContextByAlbumIndex,
+    loading,
+    openAlbum,
+    orderedAlbums,
+    sections,
+  ]);
 
   return (
     <MainLayout
       focusRegion={focusRegion}
       onContentFocus={() => {
         setFocusRegion("content");
-        setFocusIndex(0);
+        setFocusIndex((value) => Math.max(value, 0));
       }}
     >
       {loading ? (
@@ -249,7 +328,17 @@ export default function AlbumsScreen() {
         <div className="albums-content">
           <div className="albums-grid-sections" aria-label="Todos los álbumes">
             {sections.map((section) => (
-              <section className="albums-year-section" key={section.year}>
+              <section
+                className="albums-year-section"
+                key={section.year}
+                ref={(element) => {
+                  if (!element) {
+                    sectionRefs.current.delete(section.year);
+                    return;
+                  }
+                  sectionRefs.current.set(section.year, element);
+                }}
+              >
                 <h2 className="albums-year-title">
                   {section.year} <span>({section.items.length} álbumes)</span>
                 </h2>

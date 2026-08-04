@@ -1,9 +1,22 @@
+import { useMemo } from "react";
 import "./App.css";
 import { AppProvider, useApp } from "./context/AppContext";
 import AlbumsScreen from "./screens/AlbumsScreen";
 import AlbumDetailScreen from "./screens/AlbumDetailScreen";
 import ViewerScreen from "./screens/ViewerScreen";
 import UptimeScreen from "./screens/UptimeScreen";
+
+function createUiTheme() {
+  const safeHues = [0, 10, 165, 185, 215, 245, 280, 325];
+  const hue = safeHues[Math.floor(Math.random() * safeHues.length)];
+  return {
+    "--ui-accent": `hsl(${hue} 95% 62%)`,
+    "--ui-accent-soft": `hsla(${hue}, 95%, 62%, 0.14)`,
+    "--ui-accent-soft-strong": `hsla(${hue}, 95%, 62%, 0.24)`,
+    "--ui-accent-glow": `hsla(${hue}, 95%, 62%, 0.38)`,
+    "--ui-accent-muted": `hsla(${hue}, 95%, 72%, 0.92)`,
+  };
+}
 
 function ConnectingScreen({ error }) {
   const serverUrl = import.meta.env.VITE_IMMICH_URL;
@@ -67,10 +80,14 @@ function Router() {
 }
 
 function App() {
+  const themeVars = useMemo(() => createUiTheme(), []);
+
   return (
-    <AppProvider>
-      <Router />
-    </AppProvider>
+    <div className="app-shell" style={themeVars}>
+      <AppProvider>
+        <Router />
+      </AppProvider>
+    </div>
   );
 }
 

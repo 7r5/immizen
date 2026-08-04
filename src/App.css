@@ -4,18 +4,28 @@
    ============================ */
 
 @keyframes shimmer {
-  0%   { background-position: -900px 0; }
-  100% { background-position:  900px 0; }
+  0% { background-position: -900px 0; }
+  100% { background-position: 900px 0; }
 }
 
 @keyframes card-appear {
   from { opacity: 0; transform: translateY(18px); }
-  to   { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes img-appear {
   from { opacity: 0; }
-  to   { opacity: 1; }
+  to { opacity: 1; }
+}
+
+.app-shell {
+  width: 100%;
+  height: 100%;
+  --ui-accent: #e8b4b8;
+  --ui-accent-soft: rgba(232, 180, 184, 0.14);
+  --ui-accent-soft-strong: rgba(232, 180, 184, 0.24);
+  --ui-accent-glow: rgba(232, 180, 184, 0.38);
+  --ui-accent-muted: #e8d6d8;
 }
 
 .tv-layout {
@@ -23,6 +33,48 @@
   width: 1920px;
   height: 1080px;
   overflow: hidden;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 18px 24px 0 24px;
+}
+
+.commit-badge {
+  z-index: 9999;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f3f4f6;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.commit-badge--sidebar {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.commit-badge-hash {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--ui-accent);
+}
+
+.commit-badge-text {
+  font-size: 13px;
+  color: #cbd5e1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 280px;
 }
 
 /* ============================
@@ -36,6 +88,12 @@
   display: flex;
   flex-direction: column;
   padding: 48px 0 48px 0;
+  border-right: 1px solid #2a2a2a;
+  z-index: 10;
+  background: #1a1a1a;
+  display: flex;
+  flex-direction: column;
+  border-color: var(--ui-accent);
   border-right: 1px solid #2a2a2a;
   z-index: 10;
 }
@@ -82,15 +140,15 @@
 }
 
 .sidebar-item.active {
-  color: #fff;
-  border-left-color: #e8b4b8;
-  background: rgba(232, 180, 184, 0.08);
+  color: var(--ui-accent);
+  border-left-color: var(--ui-accent);
+  background: var(--ui-accent-soft);
 }
 
 .sidebar-item.focused {
-  color: #fff;
-  background: rgba(255,255,255,0.12);
-  border-left-color: #fff;
+  color: var(--ui-accent-muted);
+  background: var(--ui-accent-soft-strong);
+  border-left-color: var(--ui-accent);
   transform: scaleY(1.02);
 }
 
@@ -206,8 +264,8 @@
 
 .album-card.focused {
   transform: scale(1.1);
-  border-color: #fff;
-  box-shadow: 0 0 0 4px rgba(255,255,255,0.35), 0 20px 50px rgba(0,0,0,0.9);
+  border-color: var(--ui-accent);
+  box-shadow: 0 0 0 4px var(--ui-accent-glow), 0 20px 50px rgba(0,0,0,0.9);
   z-index: 2;
 }
 
@@ -472,13 +530,13 @@
 }
 
 .interval-btn.active {
-  background: rgba(255,255,255,0.2);
-  border-color: #fff;
-  color: #fff;
+  background: var(--ui-accent-soft);
+  border-color: var(--ui-accent);
+  color: var(--ui-accent);
 }
 
 .menu-focused {
-  outline: 3px solid #facc15 !important;
+  outline: 3px solid var(--ui-accent) !important;
   outline-offset: 3px;
   transform: scale(1.08);
 }
@@ -778,13 +836,13 @@
 }
 
 .interval-btn.active {
-  color: #fff;
-  border-color: #facc15;
-  background: rgba(250, 204, 21, 0.18);
+  color: var(--ui-accent);
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-soft);
 }
 
 .viewer-control-panel .menu-focused {
-  outline: 3px solid #facc15 !important;
+  outline: 3px solid var(--ui-accent) !important;
   outline-offset: 3px;
   transform: scale(1.04);
 }
@@ -827,7 +885,7 @@
   width: 64px;
   height: 64px;
   border: 6px solid #333;
-  border-top-color: #e8b4b8;
+  border-top-color: var(--ui-accent);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -890,16 +948,16 @@
   min-width: 190px;
   margin-top: 10px;
   padding: 14px 28px;
-  border: 2px solid #facc15;
+  border: 2px solid var(--ui-accent);
   border-radius: 8px;
   color: #fff;
-  background: rgba(250, 204, 21, 0.16);
+  background: var(--ui-accent-soft);
   font-size: 24px;
   font-weight: 700;
 }
 
 .state-action.focused {
-  outline: 3px solid #facc15;
+  outline: 3px solid var(--ui-accent);
   outline-offset: 4px;
   transform: scale(1.04);
 }
@@ -1035,7 +1093,7 @@
 }
 
 .uptime-item.focused {
-  border-color: #fff;
+  border-color: var(--ui-accent);
   background: #222;
   transform: scale(1.015);
 }
