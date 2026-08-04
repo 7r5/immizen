@@ -404,22 +404,6 @@
   to   { opacity: 0; }
 }
 
-/* ---- Slideshow progress bar ---- */
-@keyframes progress-drain {
-  from { width: 100%; }
-  to   { width: 0%; }
-}
-.viewer-progress {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  height: 3px;
-  background: rgba(255, 255, 255, 0.65);
-  z-index: 11;
-  pointer-events: none;
-  border-radius: 0 2px 2px 0;
-}
-
 .interval-selector {
   display: flex;
   gap: 12px;
@@ -749,13 +733,6 @@
   outline: 3px solid #facc15 !important;
   outline-offset: 3px;
   transform: scale(1.04);
-}
-
-.viewer-progress {
-  z-index: 11;
-  height: 4px;
-  background: #a7f3d0;
-  border-radius: 0;
 }
 
 /* ============================

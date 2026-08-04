@@ -107,11 +107,11 @@ npm run check
 | Enter | Start or pause the slideshow. |
 | ↓ | Open the viewer controls. |
 | ← / → (in controls) | Move control focus. |
-| Enter (in controls) | Select playback, interval, information, skip music, or exit. |
+| Enter (in controls) | Select playback, interval, animations, information, skip music, or exit. |
 | ↑ / Back (in controls) | Close viewer controls. |
 | Back (viewer) | Return to the album. |
 
-Photos wait for their full image and background preview before a transition begins. Slides use a short cross-dissolve with restrained motion: landscape photos can pan or zoom slightly, while portrait photos remain fully visible without zoom. Videos play through completely before the slideshow advances.
+Photos wait for their full image and background preview before a transition begins. Slides use a short cross-dissolve with restrained motion by default; the viewer controls now include an animations switch to turn fade and motion on or off. Videos play through completely before the slideshow advances. Music tracks are chosen in a random order.
 
 ## Project Structure
 

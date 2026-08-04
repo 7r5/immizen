@@ -113,6 +113,7 @@ function motionClass(asset) {
 export default function ViewerScreen() {
   const { token, serverUrl, screenParams, goBack } = useApp();
   const { assets = [], startIndex = 0 } = screenParams;
+  const [animationsEnabled, setAnimationsEnabled] = useState(true);
   const totalCount = assets.length;
   const initialIndex = Math.min(
     Math.max(startIndex, 0),
@@ -143,7 +144,12 @@ export default function ViewerScreen() {
   const transitionIdRef = useRef(0);
   const activeVideoRef = useRef(null);
   const menuButtonRefs = useRef([]);
-  const menuCount = TRACKS.length > 1 ? 7 : 6;
+  const hasMusic = TRACKS.length > 1;
+  const menuCount = hasMusic ? 8 : 7;
+
+  useEffect(() => {
+    if (!animationsEnabled) setPreviousSlide(null);
+  }, [animationsEnabled]);
 
   useImagePreloader({ assets, index, serverUrl, token });
 
@@ -210,18 +216,20 @@ export default function ViewerScreen() {
       const currentAsset = assets[indexRef.current];
       const nextAsset = assets[targetIndex];
       if (!nextAsset) return;
-      if (currentAsset?.id !== nextAsset.id) {
+      if (animationsEnabled && currentAsset?.id !== nextAsset.id) {
         setPreviousSlide({
           asset: currentAsset,
           direction,
           transitionId: ++transitionIdRef.current,
         });
+      } else {
+        setPreviousSlide(null);
       }
       setIndex(targetIndex);
       setPendingSlide(null);
       setLoadError(null);
     },
-    [assets],
+    [animationsEnabled, assets],
   );
 
   const requestSlide = useCallback(
@@ -320,12 +328,13 @@ export default function ViewerScreen() {
       if (selectedIndex === 0) return toggleSlideshow();
       if (selectedIndex >= 1 && selectedIndex <= 3)
         return setIntervalSec(INTERVALS[selectedIndex - 1]);
-      if (selectedIndex === 4) return setShowInfo((visible) => !visible);
-      if (selectedIndex === 5) {
+      if (selectedIndex === 4) return setAnimationsEnabled((value) => !value);
+      if (selectedIndex === 5) return setShowInfo((visible) => !visible);
+      if (selectedIndex === 6) {
         setPlaying(false);
         return goBack();
       }
-      if (selectedIndex === 6) skipTrack();
+      if (selectedIndex === 7) skipTrack();
     },
     [goBack, skipTrack, toggleSlideshow],
   );
@@ -479,7 +488,7 @@ export default function ViewerScreen() {
       key={`background-${slide.id}`}
       url={getThumbnailUrl(serverUrl, token, slide.id, "preview")}
       objectFit="cover"
-      className={`viewer-bg ${className}`}
+      className={`viewer-bg ${className}`.trim()}
     />
   );
 
@@ -526,11 +535,13 @@ export default function ViewerScreen() {
     >
       {previousSlide &&
         renderBackground(previousSlide.asset, "viewer-bg-leave")}
-      {renderBackground(asset, "viewer-bg-enter")}
+      {renderBackground(asset, animationsEnabled ? "viewer-bg-enter" : "")}
       {previousSlide &&
         renderForeground(
           previousSlide.asset,
-          `viewer-media-leave viewer-media-${previousSlide.direction}`,
+          animationsEnabled
+            ? `viewer-media-leave viewer-media-${previousSlide.direction}`
+            : "",
           (event) => {
             if (event.animationName !== "slideFadeOut") return;
             setPreviousSlide((current) =>
@@ -542,7 +553,9 @@ export default function ViewerScreen() {
         )}
       {renderForeground(
         asset,
-        `viewer-media-enter viewer-media-${previousSlide?.direction ?? "next"} ${playing && !isVideo ? motionClass(asset) : ""}`,
+        animationsEnabled
+          ? `viewer-media-enter viewer-media-${previousSlide?.direction ?? "next"} ${playing && !isVideo ? motionClass(asset) : ""}`
+          : "",
       )}
       {pendingSlide?.waitingForVideo && (
         <video
@@ -655,6 +668,17 @@ export default function ViewerScreen() {
               menuButtonRefs.current[4] = element;
             }}
             className={`viewer-control ${menuIndex === 4 ? "menu-focused" : ""}`}
+            onClick={() => setAnimationsEnabled((value) => !value)}
+            aria-pressed={animationsEnabled}
+          >
+            Animaciones: {animationsEnabled ? "Sí" : "No"}
+          </button>
+          <button
+            type="button"
+            ref={(element) => {
+              menuButtonRefs.current[5] = element;
+            }}
+            className={`viewer-control ${menuIndex === 5 ? "menu-focused" : ""}`}
             onClick={() => setShowInfo((visible) => !visible)}
             aria-pressed={showInfo}
           >
@@ -663,9 +687,9 @@ export default function ViewerScreen() {
           <button
             type="button"
             ref={(element) => {
-              menuButtonRefs.current[5] = element;
+              menuButtonRefs.current[6] = element;
             }}
-            className={`viewer-control viewer-control-exit ${menuIndex === 5 ? "menu-focused" : ""}`}
+            className={`viewer-control viewer-control-exit ${menuIndex === 6 ? "menu-focused" : ""}`}
             onClick={() => {
               setPlaying(false);
               goBack();
@@ -673,13 +697,13 @@ export default function ViewerScreen() {
           >
             Salir
           </button>
-          {TRACKS.length > 1 && (
+          {hasMusic && (
             <button
               type="button"
               ref={(element) => {
-                menuButtonRefs.current[6] = element;
+                menuButtonRefs.current[7] = element;
               }}
-              className={`viewer-control ${menuIndex === 6 ? "menu-focused" : ""}`}
+              className={`viewer-control ${menuIndex === 7 ? "menu-focused" : ""}`}
               onClick={skipTrack}
             >
               Siguiente música
@@ -692,19 +716,6 @@ export default function ViewerScreen() {
           ↓ Controles&nbsp;&nbsp; · &nbsp;&nbsp;← → Navegar&nbsp;&nbsp; ·
           &nbsp;&nbsp;OK Reproducir/Pausar
         </div>
-      )}
-      {playing && !isVideo && !pendingSlide && totalCount > 1 && (
-        <div
-          key={`progress-${index}-${intervalSec}`}
-          className="viewer-progress"
-          aria-hidden="true"
-          style={{
-            animation: `progress-drain ${intervalSec}s linear forwards`,
-          }}
-          onAnimationEnd={(event) => {
-            if (event.animationName === "progress-drain") advanceSlide();
-          }}
-        />
       )}
     </div>
   );
