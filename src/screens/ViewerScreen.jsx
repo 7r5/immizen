@@ -1,14 +1,19 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useApp } from "../context/AppContext";
-import { getAssetUrl, getVideoUrl, getThumbnailUrl } from "../api/immich";
+import {
+  getAssetUrl,
+  getVideoUrl,
+  getThumbnailUrl,
+  getAssetPeople,
+} from "../api/immich";
 import AuthImage from "../components/AuthImage";
+import { loadImage } from "../api/imageCache";
 import useMusicPlayer from "../hooks/useMusicPlayer";
 import useImagePreloader from "../hooks/useImagePreloader";
 import TRACKS from "../config/music";
 
 const INTERVALS = [3, 5, 10];
 const UI_HIDE_DELAY = 3000;
-
 const KEYS = {
   LEFT: 37,
   UP: 38,
@@ -19,155 +24,361 @@ const KEYS = {
   BACK_ALT: 461,
 };
 
+function isPortraitAsset(asset) {
+  const exif = asset?.exifInfo ?? {};
+  return (exif.exifImageHeight ?? 0) > (exif.exifImageWidth ?? 0);
+}
+
+// Tizen's webview ignores video rotation metadata, so we counter-rotate to
+// match Immich's orientation (stored as an EXIF value: 6=90°, 8=270°, 3=180°).
+// For sideways rotations the box is swapped to the 1920x1080 viewer's other axis
+// so object-fit: contain still fits without stretching.
+const VIEWER_WIDTH = 1920;
+const VIEWER_HEIGHT = 1080;
+
+function videoOrientationStyle(asset) {
+  const orientation = Number(asset?.exifInfo?.orientation);
+  if (orientation === 3) return { transform: "rotate(180deg)" };
+  if (orientation === 6 || orientation === 8) {
+    return {
+      top: "50%",
+      left: "50%",
+      right: "auto",
+      bottom: "auto",
+      width: `${VIEWER_HEIGHT}px`,
+      height: `${VIEWER_WIDTH}px`,
+      maxWidth: "none",
+      maxHeight: "none",
+      transform: `translate(-50%, -50%) rotate(${orientation === 6 ? 90 : 270}deg)`,
+    };
+  }
+  return undefined;
+}
+
+// Immich duration comes as "H:MM:SS.mmm"; drop milliseconds and empty hours.
+function formatDuration(raw) {
+  if (!raw || typeof raw !== "string") return null;
+  const [h = "0", m = "0", s = "0"] = raw.split(":");
+  const hours = Number(h) || 0;
+  const minutes = Number(m) || 0;
+  const seconds = Math.floor(Number(s) || 0);
+  if (!hours && !minutes && !seconds) return null;
+  const ss = String(seconds).padStart(2, "0");
+  if (hours) return `${hours}:${String(minutes).padStart(2, "0")}:${ss}`;
+  return `${minutes}:${ss}`;
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes);
+  if (!value || value <= 0) return null;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let unit = 0;
+  let size = value;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  const rounded = size >= 10 || unit === 0 ? Math.round(size) : size.toFixed(1);
+  return `${rounded} ${units[unit]}`;
+}
+
+function formatShutter(exposureTime) {
+  const seconds = Number(exposureTime);
+  if (!seconds || seconds <= 0) return null;
+  if (seconds >= 1)
+    return `${seconds % 1 === 0 ? seconds : seconds.toFixed(1)} s`;
+  return `1/${Math.round(1 / seconds)} s`;
+}
+
+function motionClass(asset) {
+  if (!asset) return "";
+  const hash = [...asset.id].reduce(
+    (sum, character) => sum + character.charCodeAt(0),
+    0,
+  );
+  const variants = isPortraitAsset(asset)
+    ? [
+        "viewer-motion-portrait-up",
+        "viewer-motion-portrait-down",
+        "viewer-motion-portrait-still",
+      ]
+    : [
+        "viewer-motion-landscape-left",
+        "viewer-motion-landscape-right",
+        "viewer-motion-landscape-zoom",
+      ];
+  return variants[hash % variants.length];
+}
+
 export default function ViewerScreen() {
   const { token, serverUrl, screenParams, goBack } = useApp();
-  const { assets, startIndex = 0 } = screenParams;
-
-  const [index, setIndex] = useState(startIndex);
-  const [direction, setDirection] = useState("next");
-  const [prevAssetId, setPrevAssetId] = useState(null);
+  const { assets = [], startIndex = 0 } = screenParams;
+  const totalCount = assets.length;
+  const initialIndex = Math.min(
+    Math.max(startIndex, 0),
+    Math.max(totalCount - 1, 0),
+  );
+  const [index, setIndex] = useState(initialIndex);
+  const [previousSlide, setPreviousSlide] = useState(null);
+  const [pendingSlide, setPendingSlide] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [intervalSec, setIntervalSec] = useState(5);
   const [uiVisible, setUiVisible] = useState(true);
   const [menuMode, setMenuMode] = useState(false);
   const [menuIndex, setMenuIndex] = useState(0);
-  // separate from prevAssetId: persists until the new blurred bg has fully faded in
-  const [prevBgId, setPrevBgId] = useState(null);
-  const { trackName, skipTrack } = useMusicPlayer({ playing, tracks: TRACKS });
-  useImagePreloader({ assets, index, serverUrl, token });
-  // skip button appears only when there are multiple tracks to cycle through
-  const menuCount = TRACKS.length > 1 ? 6 : 5;
-
-  const asset = assets?.[index];
+  const [showInfo, setShowInfo] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const [people, setPeople] = useState([]);
+  const peopleCacheRef = useRef(new Map());
+  const { trackName, audioError, skipTrack } = useMusicPlayer({
+    playing,
+    tracks: TRACKS,
+  });
+  const asset = assets[index];
   const isVideo = asset?.type === "VIDEO";
-  const slideshowRef = useRef(null);
   const uiTimerRef = useRef(null);
-  // ref so the interval callback always reads the latest index without being a closure dep
-  const indexRef = useRef(index);
+  const requestIdRef = useRef(0);
+  const navigationIndexRef = useRef(initialIndex);
+  const indexRef = useRef(initialIndex);
+  const transitionIdRef = useRef(0);
+  const activeVideoRef = useRef(null);
+  const menuButtonRefs = useRef([]);
+  const menuCount = TRACKS.length > 1 ? 7 : 6;
+
+  useImagePreloader({ assets, index, serverUrl, token });
+
   useEffect(() => {
     indexRef.current = index;
-  });
-  const totalCount = assets?.length ?? 0;
+    navigationIndexRef.current = index;
+  }, [index]);
 
-  const scheduleUiHide = useCallback(() => {
-    clearTimeout(uiTimerRef.current);
-    uiTimerRef.current = setTimeout(() => setUiVisible(false), UI_HIDE_DELAY);
-  }, []);
+  useEffect(() => () => clearTimeout(uiTimerRef.current), []);
+
+  useEffect(() => {
+    if (!isVideo || !activeVideoRef.current) return;
+    activeVideoRef.current.play().catch(() => {
+      setLoadError("La reproducción automática fue bloqueada.");
+    });
+  }, [index, isVideo]);
+
+  useEffect(() => {
+    if (!showInfo || !asset?.id) return;
+    const cache = peopleCacheRef.current;
+    if (cache.has(asset.id)) {
+      setPeople(cache.get(asset.id));
+      return;
+    }
+    let active = true;
+    setPeople([]);
+    getAssetPeople(serverUrl, token, asset.id)
+      .then((list) => {
+        cache.set(asset.id, list);
+        if (active) setPeople(list);
+      })
+      .catch(() => {
+        if (active) setPeople([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [showInfo, asset?.id, serverUrl, token]);
+
+  useEffect(() => {
+    if (!menuMode) return;
+    const button = menuButtonRefs.current[menuIndex];
+    if (!button) return;
+    try {
+      button.focus({ preventScroll: true });
+    } catch {
+      button.focus();
+    }
+  }, [menuIndex, menuMode]);
 
   const showUi = useCallback(() => {
     setUiVisible(true);
     clearTimeout(uiTimerRef.current);
   }, []);
 
-  const toggleSlideshow = useCallback(() => {
-    setPlaying((p) => {
-      if (!p) scheduleUiHide();
-      else {
-        clearTimeout(uiTimerRef.current);
-        setUiVisible(true);
+  const hideUiLater = useCallback(() => {
+    clearTimeout(uiTimerRef.current);
+    uiTimerRef.current = setTimeout(() => setUiVisible(false), UI_HIDE_DELAY);
+  }, []);
+
+  const finishTransition = useCallback(
+    (targetIndex, direction, requestId) => {
+      if (requestId !== requestIdRef.current) return;
+      const currentAsset = assets[indexRef.current];
+      const nextAsset = assets[targetIndex];
+      if (!nextAsset) return;
+      if (currentAsset?.id !== nextAsset.id) {
+        setPreviousSlide({
+          asset: currentAsset,
+          direction,
+          transitionId: ++transitionIdRef.current,
+        });
       }
-      return !p;
-    });
-  }, [scheduleUiHide]);
-
-  // Images: progress bar onAnimationEnd drives timing (no interval needed).
-  // Videos: advance when the video clip ends naturally.
-  const advanceSlide = useCallback(() => {
-    const currentId = assets?.[indexRef.current]?.id ?? null;
-    setPrevAssetId(currentId);
-    setPrevBgId(currentId);
-    setDirection("next");
-    setIndex((i) => (i + 1) % totalCount);
-  }, [totalCount]);
-
-  useEffect(
-    () => () => {
-      clearInterval(slideshowRef.current);
-      clearTimeout(uiTimerRef.current);
+      setIndex(targetIndex);
+      setPendingSlide(null);
+      setLoadError(null);
     },
-    [],
+    [assets],
   );
 
-  const activateMenu = useCallback(
-    (i) => {
-      if (i === 0) {
-        toggleSlideshow();
-        return;
-      }
-      if (i >= 1 && i <= 3) {
-        setIntervalSec(INTERVALS[i - 1]);
-        return;
-      }
-      if (i === 4) {
+  const requestSlide = useCallback(
+    (targetIndex, direction, { manual = false } = {}) => {
+      if (totalCount < 2 || !assets[targetIndex]) return;
+      if (targetIndex === indexRef.current && !pendingSlide) return;
+
+      const requestId = ++requestIdRef.current;
+      const target = assets[targetIndex];
+      const previewUrl = getThumbnailUrl(
+        serverUrl,
+        token,
+        target.id,
+        "preview",
+      );
+      navigationIndexRef.current = targetIndex;
+      setLoadError(null);
+      setPendingSlide({ asset: target, direction, requestId });
+      if (manual) {
         setPlaying(false);
-        goBack();
+        showUi();
       }
-      if (i === 5) {
-        skipTrack();
+
+      if (target.type === "VIDEO") {
+        loadImage(previewUrl, token)
+          .then(() => {
+            if (requestId === requestIdRef.current) {
+              setPendingSlide({
+                asset: target,
+                direction,
+                requestId,
+                waitingForVideo: true,
+              });
+            }
+          })
+          .catch(() => {
+            if (requestId !== requestIdRef.current) return;
+            navigationIndexRef.current = indexRef.current;
+            setPendingSlide(null);
+            setLoadError("No se pudo cargar el video.");
+          });
+        return;
       }
+
+      Promise.all([
+        loadImage(getAssetUrl(serverUrl, token, target.id), token),
+        loadImage(previewUrl, token),
+      ])
+        .then(() => finishTransition(targetIndex, direction, requestId))
+        .catch(() => {
+          if (requestId !== requestIdRef.current) return;
+          navigationIndexRef.current = indexRef.current;
+          setPendingSlide(null);
+          setLoadError("No se pudo cargar esta foto.");
+        });
     },
-    [toggleSlideshow, goBack, skipTrack],
+    [
+      assets,
+      finishTransition,
+      pendingSlide,
+      serverUrl,
+      showUi,
+      token,
+      totalCount,
+    ],
+  );
+
+  const requestRelativeSlide = useCallback(
+    (offset, manual = false) => {
+      if (totalCount < 2) return;
+      const targetIndex =
+        (navigationIndexRef.current + offset + totalCount) % totalCount;
+      requestSlide(targetIndex, offset < 0 ? "prev" : "next", { manual });
+    },
+    [requestSlide, totalCount],
+  );
+
+  const advanceSlide = useCallback(() => {
+    if (!pendingSlide) requestRelativeSlide(1);
+  }, [pendingSlide, requestRelativeSlide]);
+
+  const toggleSlideshow = useCallback(() => {
+    if (totalCount < 2) return;
+    setPlaying((wasPlaying) => {
+      if (wasPlaying) showUi();
+      else {
+        setMenuMode(false);
+        hideUiLater();
+      }
+      return !wasPlaying;
+    });
+  }, [hideUiLater, showUi, totalCount]);
+
+  const activateMenu = useCallback(
+    (selectedIndex) => {
+      if (selectedIndex === 0) return toggleSlideshow();
+      if (selectedIndex >= 1 && selectedIndex <= 3)
+        return setIntervalSec(INTERVALS[selectedIndex - 1]);
+      if (selectedIndex === 4) return setShowInfo((visible) => !visible);
+      if (selectedIndex === 5) {
+        setPlaying(false);
+        return goBack();
+      }
+      if (selectedIndex === 6) skipTrack();
+    },
+    [goBack, skipTrack, toggleSlideshow],
   );
 
   useEffect(() => {
-    const onKey = (e) => {
-      const k = e.keyCode;
-      const isBack = k === KEYS.BACK || k === KEYS.BACK_ALT;
-
+    const onKey = (event) => {
+      const key = event.keyCode;
+      const isBack = key === KEYS.BACK || key === KEYS.BACK_ALT;
       if (menuMode) {
-        e.preventDefault();
-        if (k === KEYS.LEFT) {
-          setMenuIndex((i) => Math.max(i - 1, 0));
-          return;
-        }
-        if (k === KEYS.RIGHT) {
-          setMenuIndex((i) => Math.min(i + 1, menuCount - 1));
-          return;
-        }
-        if (k === KEYS.ENTER) {
-          activateMenu(menuIndex);
-          return;
-        }
-        if (k === KEYS.UP || isBack) {
+        const isMenuKey =
+          key === KEYS.LEFT ||
+          key === KEYS.RIGHT ||
+          key === KEYS.ENTER ||
+          key === KEYS.UP ||
+          isBack;
+        if (!isMenuKey) return;
+        event.preventDefault();
+        if (key === KEYS.LEFT)
+          return setMenuIndex((value) => Math.max(value - 1, 0));
+        if (key === KEYS.RIGHT)
+          return setMenuIndex((value) => Math.min(value + 1, menuCount - 1));
+        if (key === KEYS.ENTER) return activateMenu(menuIndex);
+        if (key === KEYS.UP || isBack) {
           setMenuMode(false);
           showUi();
-          return;
+          if (playing) hideUiLater();
         }
         return;
       }
-
-      if (k === KEYS.LEFT) {
-        e.preventDefault();
-        setPrevAssetId(assets?.[index]?.id ?? null);
-        setPrevBgId(assets?.[index]?.id ?? null);
-        setDirection("prev");
-        setIndex((i) => (i - 1 + totalCount) % totalCount);
-        showUi();
+      if (key === KEYS.LEFT) {
+        event.preventDefault();
+        requestRelativeSlide(-1, true);
         return;
       }
-      if (k === KEYS.RIGHT) {
-        e.preventDefault();
-        setPrevAssetId(assets?.[index]?.id ?? null);
-        setPrevBgId(assets?.[index]?.id ?? null);
-        setDirection("next");
-        setIndex((i) => (i + 1) % totalCount);
-        showUi();
+      if (key === KEYS.RIGHT) {
+        event.preventDefault();
+        requestRelativeSlide(1, true);
         return;
       }
-      if (k === KEYS.DOWN) {
-        e.preventDefault();
+      if (key === KEYS.DOWN) {
+        event.preventDefault();
         setMenuMode(true);
         setMenuIndex(0);
         showUi();
         return;
       }
-      if (k === KEYS.ENTER) {
-        e.preventDefault();
+      if (key === KEYS.ENTER) {
+        event.preventDefault();
         toggleSlideshow();
         return;
       }
       if (isBack) {
-        e.preventDefault();
+        event.preventDefault();
         setPlaying(false);
         goBack();
       }
@@ -175,190 +386,325 @@ export default function ViewerScreen() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [
-    menuMode,
-    menuIndex,
-    totalCount,
     activateMenu,
-    toggleSlideshow,
-    showUi,
     goBack,
+    hideUiLater,
     menuCount,
+    menuIndex,
+    menuMode,
+    playing,
+    requestRelativeSlide,
+    showUi,
+    toggleSlideshow,
   ]);
 
-  if (!asset) return null;
+  const details = useMemo(() => {
+    const exif = asset?.exifInfo ?? {};
+    const isVideoAsset = asset?.type === "VIDEO";
+    const takenAt =
+      asset?.localDateTime ?? exif.dateTimeOriginal ?? asset?.fileCreatedAt;
 
-  const mediaSrc = isVideo
-    ? getVideoUrl(serverUrl, token, asset.id)
-    : getAssetUrl(serverUrl, token, asset.id);
+    const rows = [];
+    const addRow = (label, value) => {
+      if (value !== null && value !== undefined && value !== "") {
+        rows.push({ label, value });
+      }
+    };
 
-  // only bgPanClass and portrait detection needed — foreground has no Ken Burns
-  const { bgPanClass, isPortrait } = useMemo(() => {
-    const exif = asset.exifInfo ?? {};
-    const w = exif.exifImageWidth ?? 0;
-    const h = exif.exifImageHeight ?? 0;
-    const bgDirs = [
-      "viewer-bg-pan-left",
-      "viewer-bg-pan-right",
-      "viewer-bg-pan-up",
-      "viewer-bg-pan-down",
-    ];
-    const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
-    return { bgPanClass: rand(bgDirs), isPortrait: h > w };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [asset.id]);
+    addRow("Tipo", isVideoAsset ? "Video" : "Foto");
+    addRow(
+      "Fecha",
+      takenAt
+        ? new Date(takenAt).toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })
+        : null,
+    );
+    if (isVideoAsset) addRow("Duración", formatDuration(asset?.duration));
+    addRow(
+      "Resolución",
+      exif.exifImageWidth && exif.exifImageHeight
+        ? `${exif.exifImageWidth} x ${exif.exifImageHeight}`
+        : null,
+    );
+    if (isVideoAsset && exif.fps)
+      addRow("Cuadros", `${Math.round(exif.fps)} fps`);
+    addRow("Tamaño", formatBytes(exif.fileSizeInByte));
+    addRow("Cámara", [exif.make, exif.model].filter(Boolean).join(" "));
+    addRow("Lente", exif.lensModel);
+    addRow(
+      "Ajustes",
+      [
+        exif.fNumber ? `f/${exif.fNumber}` : null,
+        exif.exposureTime ? formatShutter(exif.exposureTime) : null,
+        exif.iso ? `ISO ${exif.iso}` : null,
+        exif.focalLength ? `${Math.round(exif.focalLength)} mm` : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    );
+    addRow(
+      "Ubicación",
+      [exif.city, exif.state, exif.country].filter(Boolean).join(", "),
+    );
+    addRow("Descripción", exif.description?.trim());
+    if (exif.rating > 0) addRow("Valoración", "★".repeat(exif.rating));
+    addRow(
+      "Personas",
+      people
+        .filter((person) => person?.name && !person.isHidden)
+        .map((person) => person.name)
+        .join(", "),
+    );
 
-  const exif = asset.exifInfo ?? {};
-  const takenAt = asset.localDateTime ?? asset.fileCreatedAt;
-  const dateStr = takenAt
-    ? new Date(takenAt).toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : null;
-  const camera = [exif.make, exif.model].filter(Boolean).join(" ");
-  const tech = [
-    exif.fNumber ? `f/${exif.fNumber}` : null,
-    exif.exposureTime ? `1/${Math.round(1 / exif.exposureTime)}s` : null,
-    exif.iso ? `ISO ${exif.iso}` : null,
-    exif.focalLength ? `${exif.focalLength}mm` : null,
-  ]
-    .filter(Boolean)
-    .join("  ·  ");
-  const location = [exif.city, exif.country].filter(Boolean).join(", ");
-  const dims =
-    exif.exifImageWidth && exif.exifImageHeight
-      ? `${exif.exifImageWidth} × ${exif.exifImageHeight}`
-      : null;
+    return { filename: asset?.originalFileName, rows };
+  }, [asset, people]);
+
+  if (!asset) {
+    return (
+      <div className="viewer-screen">
+        <div className="state-panel viewer-empty" role="alert">
+          <h1>No hay elementos para mostrar</h1>
+          <button className="state-action focused" onClick={goBack}>
+            Volver
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const renderBackground = (slide, className) => (
+    <AuthImage
+      key={`background-${slide.id}`}
+      url={getThumbnailUrl(serverUrl, token, slide.id, "preview")}
+      objectFit="cover"
+      className={`viewer-bg ${className}`}
+    />
+  );
+
+  const renderForeground = (slide, className, onAnimationEnd) => {
+    if (slide.type === "VIDEO") {
+      return (
+        <video
+          key={`media-${slide.id}`}
+          ref={slide.id === asset.id ? activeVideoRef : null}
+          className={`viewer-media ${className}`}
+          src={getVideoUrl(serverUrl, token, slide.id)}
+          style={videoOrientationStyle(slide)}
+          autoPlay={slide.id === asset.id}
+          controls={false}
+          loop={false}
+          onEnded={slide.id === asset.id && playing ? advanceSlide : undefined}
+          onAnimationEnd={onAnimationEnd}
+          onError={() => {
+            if (slide.id === asset.id) {
+              setLoadError("No se pudo reproducir el video.");
+              if (playing) setTimeout(() => advanceSlide(), 0);
+            }
+          }}
+        />
+      );
+    }
+    return (
+      <AuthImage
+        key={`media-${slide.id}`}
+        url={getAssetUrl(serverUrl, token, slide.id)}
+        objectFit="contain"
+        className={`viewer-media ${className}`}
+        onAnimationEnd={onAnimationEnd}
+      />
+    );
+  };
 
   return (
-    <div className="viewer-screen" onClick={showUi}>
-      {/* prevBgId holds the old blurred bg at full opacity until the new one finishes fading in */}
-      {!isVideo && prevBgId && prevBgId !== asset.id && (
-        <AuthImage
-          key={`bg-prev-${prevBgId}`}
-          url={getThumbnailUrl(serverUrl, token, prevBgId, "preview")}
-          objectFit="cover"
-          className="viewer-bg viewer-bg-hold"
-        />
+    <div
+      className="viewer-screen"
+      onClick={showUi}
+      role="region"
+      aria-label="Visor de fotos y videos"
+    >
+      {previousSlide &&
+        renderBackground(previousSlide.asset, "viewer-bg-leave")}
+      {renderBackground(asset, "viewer-bg-enter")}
+      {previousSlide &&
+        renderForeground(
+          previousSlide.asset,
+          `viewer-media-leave viewer-media-${previousSlide.direction}`,
+          (event) => {
+            if (event.animationName !== "slideFadeOut") return;
+            setPreviousSlide((current) =>
+              current?.transitionId === previousSlide.transitionId
+                ? null
+                : current,
+            );
+          },
+        )}
+      {renderForeground(
+        asset,
+        `viewer-media-enter viewer-media-${previousSlide?.direction ?? "next"} ${playing && !isVideo ? motionClass(asset) : ""}`,
       )}
-      {/* new background: fades in over 1.5s, then pans; onAnimationEnd removes the hold layer */}
-      {!isVideo && (
-        <AuthImage
-          key={`bg-${asset.id}`}
-          url={getThumbnailUrl(serverUrl, token, asset.id, "preview")}
-          objectFit="cover"
-          className={`viewer-bg ${bgPanClass}`}
-          onAnimationEnd={(e) => {
-            if (e.animationName === "bgFadeIn") setPrevBgId(null);
+      {pendingSlide?.waitingForVideo && (
+        <video
+          key={`media-${pendingSlide.asset.id}`}
+          className="viewer-video-preload"
+          src={getVideoUrl(serverUrl, token, pendingSlide.asset.id)}
+          muted
+          preload="auto"
+          onCanPlay={() =>
+            finishTransition(
+              assets.findIndex(
+                (candidate) => candidate.id === pendingSlide.asset.id,
+              ),
+              pendingSlide.direction,
+              pendingSlide.requestId,
+            )
+          }
+          onError={() => {
+            if (pendingSlide.requestId !== requestIdRef.current) return;
+            navigationIndexRef.current = indexRef.current;
+            setPendingSlide(null);
+            setLoadError("No se pudo reproducir el video.");
+            if (playing) setTimeout(() => requestRelativeSlide(1), 0);
           }}
         />
       )}
-      {/* previous image cross-dissolves out; onAnimationEnd clears the ghost layer */}
-      {prevAssetId && prevAssetId !== asset.id && !isVideo && (
-        <AuthImage
-          key={`prev-${prevAssetId}`}
-          url={getAssetUrl(serverUrl, token, prevAssetId)}
-          objectFit="cover"
-          className={`viewer-media-exit anim-exit-${direction}`}
-          onAnimationEnd={() => setPrevAssetId(null)}
-        />
-      )}
-      {isVideo ? (
-        <video
-          key={asset.id}
-          className="viewer-media"
-          src={mediaSrc}
-          autoPlay
-          controls={false}
-          loop={!playing}
-          onEnded={playing ? advanceSlide : undefined}
-        />
-      ) : (
-        /* No Ken Burns scale — pure cross-dissolve. Portrait uses contain so full photo is visible. */
-        <AuthImage
-          key={asset.id}
-          url={mediaSrc}
-          objectFit={playing && !isPortrait ? "cover" : "contain"}
-          className={`viewer-media anim-enter-${direction}`}
-        />
-      )}
-
-      {/* top-right info panel */}
-      <div className={`viewer-info ${uiVisible ? "visible" : "hidden"}`}>
-        {asset.originalFileName && (
-          <div className="vi-filename">{asset.originalFileName}</div>
-        )}
-        {dateStr && <div className="vi-row">📅 {dateStr}</div>}
-        {camera && <div className="vi-row">📷 {camera}</div>}
-        {tech && <div className="vi-row vi-tech">{tech}</div>}
-        {dims && <div className="vi-row">🖼 {dims}</div>}
-        {location && <div className="vi-row">📍 {location}</div>}
-      </div>
-
-      <div className={`viewer-overlay ${uiVisible ? "visible" : "hidden"}`}>
-        <div className="viewer-counter">
+      <div className="viewer-vignette" />
+      <div
+        className={`viewer-status ${uiVisible ? "visible" : "hidden"}`}
+        aria-live="polite"
+      >
+        <span>
           {index + 1} / {totalCount}
-        </div>
-
-        {trackName && <div className="music-badge">&#9835; {trackName}</div>}
-
-        <button
-          className={`slideshow-btn ${playing ? "playing" : ""} ${menuMode && menuIndex === 0 ? "menu-focused" : ""}`}
-          onClick={toggleSlideshow}
+        </span>
+        {playing && (
+          <span className="viewer-status-playing">Reproduciendo</span>
+        )}
+        {trackName && !audioError && (
+          <span className="viewer-status-track">Música: {trackName}</span>
+        )}
+        {audioError && (
+          <span className="viewer-status-track viewer-status-track-error">
+            {audioError}
+          </span>
+        )}
+      </div>
+      {showInfo && uiVisible && (
+        <div
+          className="viewer-info"
+          role="status"
+          aria-label="Información del elemento"
         >
-          {playing ? "⏸ Pause slideshow" : "▶ Start slideshow"}
-        </button>
-
-        <div className="interval-selector">
-          {INTERVALS.map((s, i) => (
-            <button
-              key={s}
-              className={`interval-btn ${intervalSec === s ? "active" : ""} ${menuMode && menuIndex === i + 1 ? "menu-focused" : ""}`}
-              onClick={() => setIntervalSec(s)}
-            >
-              {s}s
-            </button>
+          {details.filename && (
+            <div className="vi-filename">{details.filename}</div>
+          )}
+          {details.rows.map(({ label, value }) => (
+            <div className="vi-row" key={label}>
+              <span className="vi-label">{label}</span>
+              <span className="vi-value">{value}</span>
+            </div>
           ))}
         </div>
-
-        <button
-          className={`viewer-back-btn ${menuMode && menuIndex === 4 ? "menu-focused" : ""}`}
-          onClick={() => {
-            setPlaying(false);
-            goBack();
-          }}
+      )}
+      {loadError && (
+        <div className="viewer-message viewer-message-error" role="alert">
+          {loadError}
+        </div>
+      )}
+      {pendingSlide && (
+        <div className="viewer-message" role="status" aria-live="polite">
+          Cargando siguiente diapositiva…
+        </div>
+      )}
+      {menuMode && (
+        <div
+          className="viewer-control-panel"
+          role="toolbar"
+          aria-label="Controles del visor"
         >
-          &#8249; Back
-        </button>
-
-        {TRACKS.length > 1 && (
           <button
-            className={`skip-track-btn ${menuMode && menuIndex === 5 ? "menu-focused" : ""}`}
-            onClick={skipTrack}
+            type="button"
+            ref={(element) => {
+              menuButtonRefs.current[0] = element;
+            }}
+            className={`viewer-control-primary ${menuIndex === 0 ? "menu-focused" : ""}`}
+            onClick={toggleSlideshow}
+            aria-pressed={playing}
           >
-            &#9197;
+            {playing ? "Pausar" : "Iniciar"}
           </button>
-        )}
-      </div>
-
-      <div className="viewer-vignette" />
-
-      {/* progress bar only for images — its onAnimationEnd drives the slide advance */}
-      {playing && !isVideo && (
+          <div className="interval-selector" aria-label="Intervalo">
+            {INTERVALS.map((seconds, offset) => (
+              <button
+                type="button"
+                key={seconds}
+                ref={(element) => {
+                  menuButtonRefs.current[offset + 1] = element;
+                }}
+                className={`interval-btn ${intervalSec === seconds ? "active" : ""} ${menuIndex === offset + 1 ? "menu-focused" : ""}`}
+                onClick={() => setIntervalSec(seconds)}
+                aria-pressed={intervalSec === seconds}
+              >
+                {seconds}s
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            ref={(element) => {
+              menuButtonRefs.current[4] = element;
+            }}
+            className={`viewer-control ${menuIndex === 4 ? "menu-focused" : ""}`}
+            onClick={() => setShowInfo((visible) => !visible)}
+            aria-pressed={showInfo}
+          >
+            Info
+          </button>
+          <button
+            type="button"
+            ref={(element) => {
+              menuButtonRefs.current[5] = element;
+            }}
+            className={`viewer-control viewer-control-exit ${menuIndex === 5 ? "menu-focused" : ""}`}
+            onClick={() => {
+              setPlaying(false);
+              goBack();
+            }}
+          >
+            Salir
+          </button>
+          {TRACKS.length > 1 && (
+            <button
+              type="button"
+              ref={(element) => {
+                menuButtonRefs.current[6] = element;
+              }}
+              className={`viewer-control ${menuIndex === 6 ? "menu-focused" : ""}`}
+              onClick={skipTrack}
+            >
+              Siguiente música
+            </button>
+          )}
+        </div>
+      )}
+      {uiVisible && !menuMode && (
+        <div className="viewer-help" role="status">
+          ↓ Controles&nbsp;&nbsp; · &nbsp;&nbsp;← → Navegar&nbsp;&nbsp; ·
+          &nbsp;&nbsp;OK Reproducir/Pausar
+        </div>
+      )}
+      {playing && !isVideo && !pendingSlide && totalCount > 1 && (
         <div
           key={`progress-${index}-${intervalSec}`}
           className="viewer-progress"
+          aria-hidden="true"
           style={{
             animation: `progress-drain ${intervalSec}s linear forwards`,
           }}
-          onAnimationEnd={advanceSlide}
+          onAnimationEnd={(event) => {
+            if (event.animationName === "progress-drain") advanceSlide();
+          }}
         />
-      )}
-
-      {menuMode && (
-        <div className="viewer-hint">
-          &#8592;&#8594; navigate &nbsp; Enter select &nbsp; &#8593; exit menu
-        </div>
       )}
     </div>
   );
