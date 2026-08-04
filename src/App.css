@@ -504,6 +504,23 @@
   z-index: 1;
 }
 
+/* Temporary on-device video rotation diagnostics */
+.viewer-video-debug {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 5;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #7CFC00;
+  font-family: monospace;
+  font-size: 22px;
+  line-height: 1.35;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 /* ---- Entrance / exit: pure cross-dissolve, no scale/zoom ---- */
 @keyframes slideFadeIn {
   from { opacity: 0; }
