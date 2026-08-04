@@ -29,6 +29,16 @@ export async function getAlbums(serverUrl, token) {
     return res.json()
 }
 
+// Search results omit face data; the single-asset endpoint includes recognized people.
+export async function getAssetPeople(serverUrl, token, assetId) {
+    const res = await fetch(`${BASE(serverUrl)}/api/assets/${assetId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error(`Failed to fetch asset: ${res.status}`)
+    const data = await res.json()
+    return Array.isArray(data?.people) ? data.people : []
+}
+
 export async function getSharedAlbums(serverUrl, token) {
     const res = await fetch(`${BASE(serverUrl)}/api/albums?shared=true`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -90,9 +100,10 @@ export function getAssetUrl(serverUrl, _token, assetId) {
     return `${BASE(serverUrl)}/api/assets/${assetId}/original`
 }
 
-// Videos use ?accessToken= because <video> src cannot set Authorization header.
+// Videos use ?sessionKey= (the query param Immich accepts for a session token)
+// because <video> src cannot set an Authorization header.
 export function getVideoUrl(serverUrl, token, assetId) {
-    return `${BASE(serverUrl)}/api/assets/${assetId}/video/playback?accessToken=${encodeURIComponent(token)}`
+    return `${BASE(serverUrl)}/api/assets/${assetId}/video/playback?sessionKey=${encodeURIComponent(token)}`
 }
 
 export function getAlbumThumbnailUrl(serverUrl, _token, albumThumbnailAssetId) {

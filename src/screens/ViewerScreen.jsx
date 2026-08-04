@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useApp } from "../context/AppContext";
-import { getAssetUrl, getVideoUrl, getThumbnailUrl } from "../api/immich";
+import {
+  getAssetUrl,
+  getVideoUrl,
+  getThumbnailUrl,
+  getAssetPeople,
+} from "../api/immich";
 import AuthImage from "../components/AuthImage";
 import { loadImage } from "../api/imageCache";
 import useMusicPlayer from "../hooks/useMusicPlayer";
@@ -22,6 +27,67 @@ const KEYS = {
 function isPortraitAsset(asset) {
   const exif = asset?.exifInfo ?? {};
   return (exif.exifImageHeight ?? 0) > (exif.exifImageWidth ?? 0);
+}
+
+// Tizen's webview ignores video rotation metadata, so we counter-rotate to
+// match Immich's orientation (stored as an EXIF value: 6=90°, 8=270°, 3=180°).
+// For sideways rotations the box is swapped to the 1920x1080 viewer's other axis
+// so object-fit: contain still fits without stretching.
+const VIEWER_WIDTH = 1920;
+const VIEWER_HEIGHT = 1080;
+
+function videoOrientationStyle(asset) {
+  const orientation = Number(asset?.exifInfo?.orientation);
+  if (orientation === 3) return { transform: "rotate(180deg)" };
+  if (orientation === 6 || orientation === 8) {
+    return {
+      top: "50%",
+      left: "50%",
+      right: "auto",
+      bottom: "auto",
+      width: `${VIEWER_HEIGHT}px`,
+      height: `${VIEWER_WIDTH}px`,
+      maxWidth: "none",
+      maxHeight: "none",
+      transform: `translate(-50%, -50%) rotate(${orientation === 6 ? 90 : 270}deg)`,
+    };
+  }
+  return undefined;
+}
+
+// Immich duration comes as "H:MM:SS.mmm"; drop milliseconds and empty hours.
+function formatDuration(raw) {
+  if (!raw || typeof raw !== "string") return null;
+  const [h = "0", m = "0", s = "0"] = raw.split(":");
+  const hours = Number(h) || 0;
+  const minutes = Number(m) || 0;
+  const seconds = Math.floor(Number(s) || 0);
+  if (!hours && !minutes && !seconds) return null;
+  const ss = String(seconds).padStart(2, "0");
+  if (hours) return `${hours}:${String(minutes).padStart(2, "0")}:${ss}`;
+  return `${minutes}:${ss}`;
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes);
+  if (!value || value <= 0) return null;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let unit = 0;
+  let size = value;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  const rounded = size >= 10 || unit === 0 ? Math.round(size) : size.toFixed(1);
+  return `${rounded} ${units[unit]}`;
+}
+
+function formatShutter(exposureTime) {
+  const seconds = Number(exposureTime);
+  if (!seconds || seconds <= 0) return null;
+  if (seconds >= 1)
+    return `${seconds % 1 === 0 ? seconds : seconds.toFixed(1)} s`;
+  return `1/${Math.round(1 / seconds)} s`;
 }
 
 function motionClass(asset) {
@@ -62,6 +128,8 @@ export default function ViewerScreen() {
   const [menuIndex, setMenuIndex] = useState(0);
   const [showInfo, setShowInfo] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [people, setPeople] = useState([]);
+  const peopleCacheRef = useRef(new Map());
   const { trackName, audioError, skipTrack } = useMusicPlayer({
     playing,
     tracks: TRACKS,
@@ -92,6 +160,28 @@ export default function ViewerScreen() {
       setLoadError("La reproducción automática fue bloqueada.");
     });
   }, [index, isVideo]);
+
+  useEffect(() => {
+    if (!showInfo || !asset?.id) return;
+    const cache = peopleCacheRef.current;
+    if (cache.has(asset.id)) {
+      setPeople(cache.get(asset.id));
+      return;
+    }
+    let active = true;
+    setPeople([]);
+    getAssetPeople(serverUrl, token, asset.id)
+      .then((list) => {
+        cache.set(asset.id, list);
+        if (active) setPeople(list);
+      })
+      .catch(() => {
+        if (active) setPeople([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [showInfo, asset?.id, serverUrl, token]);
 
   useEffect(() => {
     if (!menuMode) return;
@@ -310,31 +400,66 @@ export default function ViewerScreen() {
 
   const details = useMemo(() => {
     const exif = asset?.exifInfo ?? {};
-    const takenAt = asset?.localDateTime ?? asset?.fileCreatedAt;
-    return {
-      filename: asset?.originalFileName,
-      date: takenAt
+    const isVideoAsset = asset?.type === "VIDEO";
+    const takenAt =
+      asset?.localDateTime ?? exif.dateTimeOriginal ?? asset?.fileCreatedAt;
+
+    const rows = [];
+    const addRow = (label, value) => {
+      if (value !== null && value !== undefined && value !== "") {
+        rows.push({ label, value });
+      }
+    };
+
+    addRow("Tipo", isVideoAsset ? "Video" : "Foto");
+    addRow(
+      "Fecha",
+      takenAt
         ? new Date(takenAt).toLocaleString(undefined, {
             dateStyle: "medium",
             timeStyle: "short",
           })
         : null,
-      camera: [exif.make, exif.model].filter(Boolean).join(" "),
-      tech: [
+    );
+    if (isVideoAsset) addRow("Duración", formatDuration(asset?.duration));
+    addRow(
+      "Resolución",
+      exif.exifImageWidth && exif.exifImageHeight
+        ? `${exif.exifImageWidth} x ${exif.exifImageHeight}`
+        : null,
+    );
+    if (isVideoAsset && exif.fps)
+      addRow("Cuadros", `${Math.round(exif.fps)} fps`);
+    addRow("Tamaño", formatBytes(exif.fileSizeInByte));
+    addRow("Cámara", [exif.make, exif.model].filter(Boolean).join(" "));
+    addRow("Lente", exif.lensModel);
+    addRow(
+      "Ajustes",
+      [
         exif.fNumber ? `f/${exif.fNumber}` : null,
-        exif.exposureTime ? `1/${Math.round(1 / exif.exposureTime)}s` : null,
+        exif.exposureTime ? formatShutter(exif.exposureTime) : null,
         exif.iso ? `ISO ${exif.iso}` : null,
-        exif.focalLength ? `${exif.focalLength}mm` : null,
+        exif.focalLength ? `${Math.round(exif.focalLength)} mm` : null,
       ]
         .filter(Boolean)
-        .join(" | "),
-      dimensions:
-        exif.exifImageWidth && exif.exifImageHeight
-          ? `${exif.exifImageWidth} x ${exif.exifImageHeight}`
-          : null,
-      location: [exif.city, exif.country].filter(Boolean).join(", "),
-    };
-  }, [asset]);
+        .join(" · "),
+    );
+    addRow(
+      "Ubicación",
+      [exif.city, exif.state, exif.country].filter(Boolean).join(", "),
+    );
+    addRow("Descripción", exif.description?.trim());
+    if (exif.rating > 0) addRow("Valoración", "★".repeat(exif.rating));
+    addRow(
+      "Personas",
+      people
+        .filter((person) => person?.name && !person.isHidden)
+        .map((person) => person.name)
+        .join(", "),
+    );
+
+    return { filename: asset?.originalFileName, rows };
+  }, [asset, people]);
 
   if (!asset) {
     return (
@@ -366,14 +491,17 @@ export default function ViewerScreen() {
           ref={slide.id === asset.id ? activeVideoRef : null}
           className={`viewer-media ${className}`}
           src={getVideoUrl(serverUrl, token, slide.id)}
+          style={videoOrientationStyle(slide)}
           autoPlay={slide.id === asset.id}
           controls={false}
           loop={false}
           onEnded={slide.id === asset.id && playing ? advanceSlide : undefined}
           onAnimationEnd={onAnimationEnd}
           onError={() => {
-            if (slide.id === asset.id)
+            if (slide.id === asset.id) {
               setLoadError("No se pudo reproducir el video.");
+              if (playing) setTimeout(() => advanceSlide(), 0);
+            }
           }}
         />
       );
@@ -437,6 +565,7 @@ export default function ViewerScreen() {
             navigationIndexRef.current = indexRef.current;
             setPendingSlide(null);
             setLoadError("No se pudo reproducir el video.");
+            if (playing) setTimeout(() => requestRelativeSlide(1), 0);
           }}
         />
       )}
@@ -469,13 +598,12 @@ export default function ViewerScreen() {
           {details.filename && (
             <div className="vi-filename">{details.filename}</div>
           )}
-          {details.date && <div className="vi-row">{details.date}</div>}
-          {details.camera && <div className="vi-row">{details.camera}</div>}
-          {details.tech && <div className="vi-row vi-tech">{details.tech}</div>}
-          {details.dimensions && (
-            <div className="vi-row">{details.dimensions}</div>
-          )}
-          {details.location && <div className="vi-row">{details.location}</div>}
+          {details.rows.map(({ label, value }) => (
+            <div className="vi-row" key={label}>
+              <span className="vi-label">{label}</span>
+              <span className="vi-value">{value}</span>
+            </div>
+          ))}
         </div>
       )}
       {loadError && (

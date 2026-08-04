@@ -483,11 +483,28 @@
 }
 
 .vi-row {
-  font-size: 22px;
+  font-size: 21px;
   color: #ddd;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.vi-label {
+  flex: 0 0 auto;
+  font-size: 16px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #8aa0ab;
+}
+
+.vi-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  color: #eef6fa;
+  overflow-wrap: anywhere;
 }
 
 .vi-tech {
