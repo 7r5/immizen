@@ -36,7 +36,7 @@ function isPortraitAsset(asset) {
 const VIEWER_WIDTH = 1920;
 const VIEWER_HEIGHT = 1080;
 
-function videoOrientationStyle(asset) {
+function computeVideoLayout(asset, videoSize, rotationOverride = null) {
   const orientation = Number(asset?.exifInfo?.orientation) || 1;
   const rotationByOrientation = {
     1: 0,
@@ -48,23 +48,85 @@ function videoOrientationStyle(asset) {
     7: 270,
     8: 270,
   };
-  const rotation = rotationByOrientation[orientation] ?? 0;
-
-  if (rotation === 0) {
-    if (orientation === 2) return { transform: "scaleX(-1)" };
-    return undefined;
-  }
+  const mirrorX = orientation === 2 || orientation === 5 || orientation === 7;
+  const mirrorY = orientation === 4;
+  const quarterTurn = orientation >= 5 && orientation <= 8;
 
   const exif = asset?.exifInfo ?? {};
-  const sourceWidth = Number(exif.exifImageWidth ?? exif.width ?? 0);
-  const sourceHeight = Number(exif.exifImageHeight ?? exif.height ?? 0);
+  const exifWidth = Number(exif.exifImageWidth ?? exif.width ?? 0);
+  const exifHeight = Number(exif.exifImageHeight ?? exif.height ?? 0);
+  const decodedWidth = Number(videoSize?.width ?? 0);
+  const decodedHeight = Number(videoSize?.height ?? 0);
+
+  let rotation = rotationByOrientation[orientation] ?? 0;
+
+  const expectedPortrait =
+    exifWidth > 0 && exifHeight > 0 ? exifHeight > exifWidth : null;
+  const decodedPortrait =
+    decodedWidth > 0 && decodedHeight > 0 ? decodedHeight > decodedWidth : null;
+
+  // Immich stores display-oriented dimensions and browsers apply rotation metadata, but
+  // Tizen's webview may not. Compare what the player actually decoded against the intended
+  // orientation: if they already match, the player rotated it and we must not rotate again.
+  if (quarterTurn) {
+    if (decodedPortrait !== null && expectedPortrait !== null) {
+      rotation = decodedPortrait === expectedPortrait ? 0 : rotation;
+    } else if (decodedPortrait !== null) {
+      rotation = decodedPortrait ? 0 : rotation;
+    } else if (expectedPortrait) {
+      rotation = 0;
+    }
+  }
+
+  // Manual override for on-device diagnosis; wins over any computed rotation.
+  if (rotationOverride !== null) rotation = rotationOverride;
+
   const sideways = rotation === 90 || rotation === 270;
+  const sourceWidth = decodedWidth || exifWidth;
+  const sourceHeight = decodedHeight || exifHeight;
+
+  const debug = {
+    orientation,
+    isTizen: typeof window !== "undefined" && Boolean(window.tizen),
+    exifWidth,
+    exifHeight,
+    decodedWidth,
+    decodedHeight,
+    rotation,
+    manual: rotationOverride,
+    mirrorX,
+    mirrorY,
+    boxWidth: null,
+    boxHeight: null,
+  };
+
+  if (rotation === 0) {
+    if (mirrorX || mirrorY) {
+      const mirrorTransforms = [];
+      if (mirrorX) mirrorTransforms.push("scaleX(-1)");
+      if (mirrorY) mirrorTransforms.push("scaleY(-1)");
+      return { style: { transform: mirrorTransforms.join(" ") }, debug };
+    }
+    return { style: undefined, debug };
+  }
+
+  // translateZ(0) pushes the <video> onto a GPU texture layer so the rotation applies to
+  // the pixels; on Tizen's hardware video plane a plain 2D rotate only turns the box.
+  const transforms = [
+    "translate(-50%, -50%)",
+    "translateZ(0)",
+    `rotate(${rotation}deg)`,
+    mirrorX ? "scaleX(-1)" : null,
+    mirrorY ? "scaleY(-1)" : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  // Box is built from the real content aspect so object-fit: contain never stretches.
   const displayWidth = sideways ? sourceHeight : sourceWidth;
   const displayHeight = sideways ? sourceWidth : sourceHeight;
-  const hasValidSize = displayWidth > 0 && displayHeight > 0;
 
-  // Fit the oriented frame to the 1920x1080 viewer without distorting aspect ratio.
-  if (hasValidSize) {
+  if (displayWidth > 0 && displayHeight > 0) {
     const scale = Math.min(
       VIEWER_WIDTH / displayWidth,
       VIEWER_HEIGHT / displayHeight,
@@ -73,25 +135,46 @@ function videoOrientationStyle(asset) {
     const fittedHeight = Math.round(displayHeight * scale);
     const preRotateWidth = sideways ? fittedHeight : fittedWidth;
     const preRotateHeight = sideways ? fittedWidth : fittedHeight;
+    debug.boxWidth = preRotateWidth;
+    debug.boxHeight = preRotateHeight;
     return {
+      style: {
+        top: "50%",
+        left: "50%",
+        right: "auto",
+        bottom: "auto",
+        width: `${preRotateWidth}px`,
+        height: `${preRotateHeight}px`,
+        maxWidth: "none",
+        maxHeight: "none",
+        transform: transforms,
+        willChange: "transform",
+        backfaceVisibility: "hidden",
+      },
+      debug,
+    };
+  }
+
+  // Dimensions unknown yet: swap the viewer box for sideways turns so contain never stretches.
+  const fallbackWidth = sideways ? VIEWER_HEIGHT : VIEWER_WIDTH;
+  const fallbackHeight = sideways ? VIEWER_WIDTH : VIEWER_HEIGHT;
+  debug.boxWidth = fallbackWidth;
+  debug.boxHeight = fallbackHeight;
+  return {
+    style: {
       top: "50%",
       left: "50%",
       right: "auto",
       bottom: "auto",
-      width: `${preRotateWidth}px`,
-      height: `${preRotateHeight}px`,
+      width: `${fallbackWidth}px`,
+      height: `${fallbackHeight}px`,
       maxWidth: "none",
       maxHeight: "none",
-      transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
-    };
-  }
-
-  return {
-    top: "50%",
-    left: "50%",
-    right: "auto",
-    bottom: "auto",
-    transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+      transform: transforms,
+      willChange: "transform",
+      backfaceVisibility: "hidden",
+    },
+    debug,
   };
 }
 
@@ -150,6 +233,87 @@ function motionClass(asset) {
   return variants[hash % variants.length];
 }
 
+function VideoCanvasMedia({
+  slide,
+  className,
+  serverUrl,
+  token,
+  isActive,
+  playing,
+  onAnimationEnd,
+  onEnded,
+  onError,
+  captureVideoDimensions,
+  videoDimensions,
+  manualRotation,
+  onVideoRef,
+}) {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const rafRef = useRef(0);
+
+  const layout = useMemo(
+    () => computeVideoLayout(slide, videoDimensions[slide.id], manualRotation),
+    [manualRotation, slide, videoDimensions],
+  );
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const drawFrame = () => {
+      if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+        }
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      }
+      rafRef.current = window.requestAnimationFrame(drawFrame);
+    };
+
+    drawFrame();
+    return () => {
+      if (rafRef.current) {
+        window.cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, [layout, slide.id]);
+
+  return (
+    <>
+      <video
+        ref={(node) => {
+          videoRef.current = node;
+          if (onVideoRef) onVideoRef(node);
+        }}
+        className="viewer-video-hidden"
+        src={getVideoUrl(serverUrl, token, slide.id)}
+        autoPlay={isActive}
+        controls={false}
+        loop={false}
+        playsInline
+        onLoadedMetadata={(event) => captureVideoDimensions(slide.id, event.currentTarget)}
+        onEnded={onEnded}
+        onAnimationEnd={onAnimationEnd}
+        onError={onError}
+      />
+      <canvas
+        key={`canvas-${slide.id}`}
+        ref={canvasRef}
+        className={`viewer-media ${className}`.trim()}
+        style={layout.style}
+        onAnimationEnd={onAnimationEnd}
+      />
+    </>
+  );
+}
+
 export default function ViewerScreen() {
   const { token, serverUrl, screenParams, goBack } = useApp();
   const { assets = [], startIndex = 0 } = screenParams;
@@ -169,6 +333,8 @@ export default function ViewerScreen() {
   const [menuIndex, setMenuIndex] = useState(0);
   const [showInfo, setShowInfo] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [videoDimensions, setVideoDimensions] = useState({});
+  const [manualRotation, setManualRotation] = useState(null);
   const [people, setPeople] = useState([]);
   const peopleCacheRef = useRef(new Map());
   const { trackName, audioError, skipTrack } = useMusicPlayer({
@@ -185,7 +351,7 @@ export default function ViewerScreen() {
   const activeVideoRef = useRef(null);
   const menuButtonRefs = useRef([]);
   const hasMusic = TRACKS.length > 1;
-  const menuCount = hasMusic ? 8 : 7;
+  const menuCount = hasMusic ? 9 : 8;
 
   useEffect(() => {
     if (!animationsEnabled) setPreviousSlide(null);
@@ -196,6 +362,7 @@ export default function ViewerScreen() {
   useEffect(() => {
     indexRef.current = index;
     navigationIndexRef.current = index;
+    setManualRotation(null);
   }, [index]);
 
   useEffect(() => () => clearTimeout(uiTimerRef.current), []);
@@ -248,6 +415,20 @@ export default function ViewerScreen() {
   const hideUiLater = useCallback(() => {
     clearTimeout(uiTimerRef.current);
     uiTimerRef.current = setTimeout(() => setUiVisible(false), UI_HIDE_DELAY);
+  }, []);
+
+  const captureVideoDimensions = useCallback((assetId, mediaElement) => {
+    if (!assetId || !mediaElement) return;
+    const width = Number(mediaElement.videoWidth || 0);
+    const height = Number(mediaElement.videoHeight || 0);
+    if (width <= 0 || height <= 0) return;
+    setVideoDimensions((previous) => {
+      const current = previous[assetId];
+      if (current?.width === width && current?.height === height) {
+        return previous;
+      }
+      return { ...previous, [assetId]: { width, height } };
+    });
   }, []);
 
   const finishTransition = useCallback(
@@ -385,12 +566,16 @@ export default function ViewerScreen() {
       if (selectedIndex >= 1 && selectedIndex <= 3)
         return setIntervalSec(INTERVALS[selectedIndex - 1]);
       if (selectedIndex === 4) return setAnimationsEnabled((value) => !value);
-      if (selectedIndex === 5) return setShowInfo((visible) => !visible);
-      if (selectedIndex === 6) {
+      if (selectedIndex === 5)
+        return setManualRotation((prev) =>
+          prev == null ? 90 : (prev + 90) % 360,
+        );
+      if (selectedIndex === 6) return setShowInfo((visible) => !visible);
+      if (selectedIndex === 7) {
         setPlaying(false);
         return goBack();
       }
-      if (selectedIndex === 7) skipTrack();
+      if (selectedIndex === 8) skipTrack();
     },
     [goBack, skipTrack, toggleSlideshow],
   );
@@ -556,11 +741,20 @@ export default function ViewerScreen() {
           ref={slide.id === asset.id ? activeVideoRef : null}
           className={`viewer-media ${className}`}
           src={getVideoUrl(serverUrl, token, slide.id)}
-          style={videoOrientationStyle(slide)}
+          style={
+            computeVideoLayout(
+              slide,
+              videoDimensions[slide.id],
+              slide.id === asset.id ? manualRotation : null,
+            ).style
+          }
           autoPlay={slide.id === asset.id}
           controls={false}
           loop={false}
           onEnded={slide.id === asset.id && playing ? advanceSlide : undefined}
+          onLoadedMetadata={(event) =>
+            captureVideoDimensions(slide.id, event.currentTarget)
+          }
           onAnimationEnd={onAnimationEnd}
           onError={() => {
             if (slide.id === asset.id) {
@@ -589,6 +783,40 @@ export default function ViewerScreen() {
       role="region"
       aria-label="Visor de fotos y videos"
     >
+      {isVideo && showInfo && (
+        <div className="viewer-video-debug" role="status">
+          {(() => {
+            const d = computeVideoLayout(
+              asset,
+              videoDimensions[asset.id],
+              manualRotation,
+            ).debug;
+            return (
+              <>
+                <div>tizen: {String(d.isTizen)}</div>
+                <div>orientation: {d.orientation}</div>
+                <div>
+                  exif: {d.exifWidth}×{d.exifHeight}
+                </div>
+                <div>
+                  decoded: {d.decodedWidth}×{d.decodedHeight}
+                </div>
+                <div>rotation: {d.rotation}°</div>
+                <div>manual: {d.manual == null ? "auto" : `${d.manual}°`}</div>
+                <div>
+                  box: {d.boxWidth ?? "-"}×{d.boxHeight ?? "-"}
+                </div>
+                {(d.mirrorX || d.mirrorY) && (
+                  <div>
+                    mirror: {d.mirrorX ? "X" : ""}
+                    {d.mirrorY ? "Y" : ""}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      )}
       {previousSlide &&
         renderBackground(previousSlide.asset, "viewer-bg-leave")}
       {renderBackground(asset, animationsEnabled ? "viewer-bg-enter" : "")}
@@ -620,6 +848,9 @@ export default function ViewerScreen() {
           src={getVideoUrl(serverUrl, token, pendingSlide.asset.id)}
           muted
           preload="auto"
+          onLoadedMetadata={(event) =>
+            captureVideoDimensions(pendingSlide.asset.id, event.currentTarget)
+          }
           onCanPlay={() =>
             finishTransition(
               assets.findIndex(
@@ -735,6 +966,20 @@ export default function ViewerScreen() {
               menuButtonRefs.current[5] = element;
             }}
             className={`viewer-control ${menuIndex === 5 ? "menu-focused" : ""}`}
+            onClick={() =>
+              setManualRotation((prev) =>
+                prev == null ? 90 : (prev + 90) % 360,
+              )
+            }
+          >
+            Rotar: {manualRotation == null ? "auto" : `${manualRotation}°`}
+          </button>
+          <button
+            type="button"
+            ref={(element) => {
+              menuButtonRefs.current[6] = element;
+            }}
+            className={`viewer-control ${menuIndex === 6 ? "menu-focused" : ""}`}
             onClick={() => setShowInfo((visible) => !visible)}
             aria-pressed={showInfo}
           >
@@ -743,9 +988,9 @@ export default function ViewerScreen() {
           <button
             type="button"
             ref={(element) => {
-              menuButtonRefs.current[6] = element;
+              menuButtonRefs.current[7] = element;
             }}
-            className={`viewer-control viewer-control-exit ${menuIndex === 6 ? "menu-focused" : ""}`}
+            className={`viewer-control viewer-control-exit ${menuIndex === 7 ? "menu-focused" : ""}`}
             onClick={() => {
               setPlaying(false);
               goBack();
@@ -757,9 +1002,9 @@ export default function ViewerScreen() {
             <button
               type="button"
               ref={(element) => {
-                menuButtonRefs.current[7] = element;
+                menuButtonRefs.current[8] = element;
               }}
-              className={`viewer-control ${menuIndex === 7 ? "menu-focused" : ""}`}
+              className={`viewer-control ${menuIndex === 8 ? "menu-focused" : ""}`}
               onClick={skipTrack}
             >
               Siguiente música
