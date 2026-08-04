@@ -113,7 +113,49 @@
 .albums-content {
   display: flex;
   flex-direction: column;
-  gap: 56px;
+  gap: 24px;
+  height: 100%;
+}
+
+.albums-grid-sections {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+  padding: 4px 20px 28px 0;
+}
+
+.albums-year-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.albums-year-title {
+  margin: 0;
+  font-size: 52px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.albums-year-title span {
+  font-size: 34px;
+  font-weight: 500;
+  color: #c7ccd0;
+}
+
+.albums-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 36px;
+}
+
+.albums-grid .album-card {
+  width: 100%;
+  height: 300px;
 }
 
 .row-title {
@@ -164,8 +206,8 @@
 
 .album-card.focused {
   transform: scale(1.1);
-  border-color: #facc15;
-  box-shadow: 0 0 0 4px rgba(250,204,21,0.35), 0 20px 50px rgba(0,0,0,0.9);
+  border-color: #fff;
+  box-shadow: 0 0 0 4px rgba(255,255,255,0.35), 0 20px 50px rgba(0,0,0,0.9);
   z-index: 2;
 }
 
@@ -221,19 +263,29 @@
   font-size: 26px;
   font-weight: 600;
   color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.album-card-period {
+  margin-top: 4px;
+  color: #cfd4d9;
+  font-size: 18px;
+  line-height: 1.25;
 }
 
 .album-card.focused .album-card-name {
-  color: #facc15;
+  color: #fff;
 }
 
 .album-card-count {
-  font-size: 20px;
+  font-size: 18px;
   color: #aaa;
-  margin-top: 2px;
+  margin-top: 6px;
+}
+
+.album-card-shared {
+  color: #cfd4d9;
 }
 
 .img-loaded {
@@ -525,7 +577,7 @@
 .viewer-media-enter {
   z-index: 2;
   opacity: 0;
-  animation: slideFadeIn 1.4s cubic-bezier(0.22, 0.8, 0.25, 1) both;
+  animation: slideFadeIn 1.4s ease both;
 }
 
 .viewer-media-leave {
@@ -567,23 +619,23 @@
 }
 
 .viewer-media-enter.viewer-motion-landscape-left {
-  animation: slideFadeIn 1.4s cubic-bezier(0.22, 0.8, 0.25, 1) both, landscape-pan-left 12s ease-in-out 1.4s alternate both;
+  animation: slideFadeIn 1.4s ease both, landscape-pan-left 12s ease-in-out 1.4s alternate both;
 }
 
 .viewer-media-enter.viewer-motion-landscape-right {
-  animation: slideFadeIn 1.4s cubic-bezier(0.22, 0.8, 0.25, 1) both, landscape-pan-right 12s ease-in-out 1.4s alternate both;
+  animation: slideFadeIn 1.4s ease both, landscape-pan-right 12s ease-in-out 1.4s alternate both;
 }
 
 .viewer-media-enter.viewer-motion-landscape-zoom {
-  animation: slideFadeIn 1.4s cubic-bezier(0.22, 0.8, 0.25, 1) both, landscape-zoom 12s ease-in-out 1.4s both;
+  animation: slideFadeIn 1.4s ease both, landscape-zoom 12s ease-in-out 1.4s both;
 }
 
 .viewer-media-enter.viewer-motion-portrait-up {
-  animation: slideFadeIn 1.4s cubic-bezier(0.22, 0.8, 0.25, 1) both, portrait-pan-up 12s ease-in-out 1.4s alternate both;
+  animation: slideFadeIn 1.4s ease both, portrait-pan-up 12s ease-in-out 1.4s alternate both;
 }
 
 .viewer-media-enter.viewer-motion-portrait-down {
-  animation: slideFadeIn 1.4s cubic-bezier(0.22, 0.8, 0.25, 1) both, portrait-pan-down 12s ease-in-out 1.4s alternate both;
+  animation: slideFadeIn 1.4s ease both, portrait-pan-down 12s ease-in-out 1.4s alternate both;
 }
 
 .viewer-video-preload {

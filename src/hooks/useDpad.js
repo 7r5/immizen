@@ -97,7 +97,7 @@ export function useDpadRows({ rows, onSelect, onBack, onSidebarFocus, enabled = 
  * Manages D-pad focus for a 2D grid (single flat index, wraps by cols).
  * Returns { focusIndex, setFocusIndex }
  */
-export function useDpadGrid({ count, cols, onSelect, onBack, enabled = true }) {
+export function useDpadGrid({ count, cols, onSelect, onBack, onSidebarFocus, enabled = true }) {
     const [focusIndex, setFocusIndex] = useState(0)
 
     const handleKey = useCallback((e) => {
@@ -123,6 +123,10 @@ export function useDpadGrid({ count, cols, onSelect, onBack, enabled = true }) {
         }
         if (code === KEYS.LEFT) {
             e.preventDefault()
+            if (onSidebarFocus && focusIndex % cols === 0) {
+                onSidebarFocus()
+                return
+            }
             setFocusIndex((i) => Math.max(i - 1, 0))
             return
         }
@@ -135,7 +139,7 @@ export function useDpadGrid({ count, cols, onSelect, onBack, enabled = true }) {
             e.preventDefault()
             setFocusIndex((i) => Math.max(i - cols, 0))
         }
-    }, [enabled, focusIndex, count, cols, onSelect, onBack])
+    }, [enabled, focusIndex, count, cols, onSelect, onBack, onSidebarFocus])
 
     useEffect(() => {
         window.addEventListener('keydown', handleKey)

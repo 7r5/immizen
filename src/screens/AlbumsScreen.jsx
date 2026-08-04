@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useApp } from "../context/AppContext";
-import { getAlbums, getSharedAlbums } from "../api/immich";
-import { useDpadRows } from "../hooks/useDpad";
+import { getAlbums, getSharedAlbums, getAlbumAssetSample } from "../api/immich";
+import { useDpadGrid } from "../hooks/useDpad";
 import MainLayout from "./MainLayout";
-import AlbumRow from "../components/AlbumRow";
+import AlbumCard from "../components/AlbumCard";
+
+const ALBUM_GRID_COLS = 2;
 
 export default function AlbumsScreen() {
   const { token, serverUrl, navigate, goBack } = useApp();
@@ -13,7 +15,58 @@ export default function AlbumsScreen() {
   const [error, setError] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [focusRegion, setFocusRegion] = useState("content"); // 'sidebar' | 'content'
+  const [albumDateMetaById, setAlbumDateMetaById] = useState({});
   const stateActionRef = useRef(null);
+  const focusedCardRef = useRef(null);
+  const albumDateCacheRef = useRef(new Map());
+
+  const monthLabel = (date) =>
+    date.toLocaleDateString("es-MX", { month: "short" }).replace(".", "");
+
+  const parseAssetDate = (asset) => {
+    const exif = asset?.exifInfo ?? {};
+    const candidate =
+      asset?.localDateTime ?? exif?.dateTimeOriginal ?? asset?.fileCreatedAt;
+    if (!candidate) return null;
+    const parsed = new Date(candidate);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const summarizeAlbumDates = (assets) => {
+    const sampleDates = assets
+      .map((asset) => parseAssetDate(asset))
+      .filter((value) => value !== null)
+      .sort((left, right) => left - right);
+
+    if (sampleDates.length === 0) {
+      return { year: 0, periodLabel: "Fecha desconocida" };
+    }
+
+    const first = sampleDates[0];
+    const last = sampleDates[sampleDates.length - 1];
+    const year = last.getFullYear();
+    const sameYear = first.getFullYear() === last.getFullYear();
+    const sameMonth = sameYear && first.getMonth() === last.getMonth();
+
+    if (sameMonth) {
+      return {
+        year,
+        periodLabel: `${monthLabel(first)} ${year}`,
+      };
+    }
+
+    if (sameYear) {
+      return {
+        year,
+        periodLabel: `${monthLabel(first)} - ${monthLabel(last)} ${year}`,
+      };
+    }
+
+    return {
+      year,
+      periodLabel: `${monthLabel(first)} ${first.getFullYear()} - ${monthLabel(last)} ${last.getFullYear()}`,
+    };
+  };
 
   useEffect(() => {
     let active = true;
@@ -40,14 +93,77 @@ export default function AlbumsScreen() {
     };
   }, [token, serverUrl, reloadKey]);
 
-  const rowData = [
-    ...(ownAlbums.length > 0
-      ? [{ title: "Tus álbumes", albums: ownAlbums }]
-      : []),
-    ...(sharedAlbums.length > 0
-      ? [{ title: "Compartidos contigo", albums: sharedAlbums }]
-      : []),
-  ];
+  const allAlbums = [...ownAlbums, ...sharedAlbums];
+
+  useEffect(() => {
+    if (loading || allAlbums.length === 0) {
+      setAlbumDateMetaById({});
+      return;
+    }
+
+    let active = true;
+    const uniqueAlbums = allAlbums.filter(
+      (album, index, source) =>
+        source.findIndex((entry) => entry.id === album.id) === index,
+    );
+
+    Promise.all(
+      uniqueAlbums.map(async (album) => {
+        const cached = albumDateCacheRef.current.get(album.id);
+        if (cached) return [album.id, cached];
+        try {
+          const sampleAssets = await getAlbumAssetSample(
+            serverUrl,
+            token,
+            album.id,
+            5,
+          );
+          const meta = summarizeAlbumDates(sampleAssets);
+          albumDateCacheRef.current.set(album.id, meta);
+          return [album.id, meta];
+        } catch {
+          const fallback = { year: 0, periodLabel: "Fecha desconocida" };
+          albumDateCacheRef.current.set(album.id, fallback);
+          return [album.id, fallback];
+        }
+      }),
+    ).then((entries) => {
+      if (!active) return;
+      setAlbumDateMetaById(Object.fromEntries(entries));
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [allAlbums, loading, serverUrl, token]);
+
+  const orderedAlbums = useMemo(() => {
+    const withDates = allAlbums.map((album) => ({
+      album,
+      meta: albumDateMetaById[album.id] ?? {
+        year: 0,
+        periodLabel: "Fecha desconocida",
+      },
+    }));
+
+    withDates.sort((left, right) => {
+      if (right.meta.year !== left.meta.year)
+        return right.meta.year - left.meta.year;
+      return left.album.albumName.localeCompare(right.album.albumName, "es");
+    });
+
+    return withDates;
+  }, [albumDateMetaById, allAlbums]);
+
+  const sections = useMemo(() => {
+    const groups = new Map();
+    orderedAlbums.forEach((entry, index) => {
+      const year = entry.meta.year > 0 ? String(entry.meta.year) : "Sin año";
+      if (!groups.has(year)) groups.set(year, []);
+      groups.get(year).push({ ...entry, index });
+    });
+    return [...groups.entries()].map(([year, items]) => ({ year, items }));
+  }, [orderedAlbums]);
 
   const retry = () => {
     setError(null);
@@ -63,15 +179,16 @@ export default function AlbumsScreen() {
     });
   };
 
-  const { activeRow, activeCol, setFocus } = useDpadRows({
-    rows: rowData.map((r) => r.albums.length),
+  const { focusIndex, setFocusIndex } = useDpadGrid({
+    count: orderedAlbums.length,
+    cols: ALBUM_GRID_COLS,
     enabled: focusRegion === "content" && !loading,
-    onSelect: (row, col) => {
-      if (error || rowData.length === 0) {
+    onSelect: (index) => {
+      if (error || orderedAlbums.length === 0) {
         retry();
         return;
       }
-      const album = rowData[row]?.albums[col];
+      const album = orderedAlbums[index]?.album;
       openAlbum(album);
     },
     onBack: goBack,
@@ -79,17 +196,24 @@ export default function AlbumsScreen() {
   });
 
   useEffect(() => {
-    if (focusRegion === "content" && !loading && rowData.length === 0) {
+    if (focusRegion === "content" && !loading && orderedAlbums.length === 0) {
       stateActionRef.current?.focus();
     }
-  }, [focusRegion, loading, rowData.length]);
+  }, [focusRegion, loading, orderedAlbums.length]);
+
+  useEffect(() => {
+    const focusedCard = focusedCardRef.current;
+    if (!focusedCard) return;
+    focusedCard.scrollIntoView({ block: "nearest", inline: "nearest" });
+    focusedCard.focus({ preventScroll: true });
+  }, [focusIndex]);
 
   return (
     <MainLayout
       focusRegion={focusRegion}
       onContentFocus={() => {
         setFocusRegion("content");
-        setFocus(0, 0);
+        setFocusIndex(0);
       }}
     >
       {loading ? (
@@ -109,7 +233,7 @@ export default function AlbumsScreen() {
             Reintentar
           </button>
         </div>
-      ) : rowData.length === 0 ? (
+      ) : orderedAlbums.length === 0 ? (
         <div className="state-panel" role="status">
           <h1>No hay álbumes disponibles</h1>
           <p>Crea o comparte un álbum en Immich y vuelve a intentarlo.</p>
@@ -123,16 +247,31 @@ export default function AlbumsScreen() {
         </div>
       ) : (
         <div className="albums-content">
-          {rowData.map((row, ri) => (
-            <AlbumRow
-              key={row.title}
-              title={row.title}
-              albums={row.albums}
-              focused={focusRegion === "content" && activeRow === ri}
-              activeCol={activeRow === ri ? activeCol : 0}
-              onSelect={openAlbum}
-            />
-          ))}
+          <div className="albums-grid-sections" aria-label="Todos los álbumes">
+            {sections.map((section) => (
+              <section className="albums-year-section" key={section.year}>
+                <h2 className="albums-year-title">
+                  {section.year} <span>({section.items.length} álbumes)</span>
+                </h2>
+                <div className="albums-grid">
+                  {section.items.map(({ album, index, meta }) => (
+                    <AlbumCard
+                      key={album.id}
+                      album={album}
+                      periodLabel={meta.periodLabel}
+                      isShared={Boolean(album?.shared || album?.isShared)}
+                      index={index}
+                      focused={
+                        focusRegion === "content" && focusIndex === index
+                      }
+                      focusRef={focusIndex === index ? focusedCardRef : null}
+                      onSelect={() => openAlbum(album)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
         </div>
       )}
     </MainLayout>

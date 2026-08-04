@@ -7,6 +7,8 @@ export default function AlbumCard({
   focused,
   focusRef,
   index = 0,
+  periodLabel,
+  isShared = false,
   onSelect,
 }) {
   const { token, serverUrl } = useApp();
@@ -36,7 +38,13 @@ export default function AlbumCard({
       </div>
       <div className="album-card-info">
         <div className="album-card-name">{album.albumName}</div>
-        <div className="album-card-count">{album.assetCount ?? 0} items</div>
+        {periodLabel && <div className="album-card-period">{periodLabel}</div>}
+        <div className="album-card-count">
+          {album.assetCount ?? 0} elementos
+          {isShared && (
+            <span className="album-card-shared"> • Compartidos</span>
+          )}
+        </div>
       </div>
     </button>
   );

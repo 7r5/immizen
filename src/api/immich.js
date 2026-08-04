@@ -110,3 +110,21 @@ export function getAlbumThumbnailUrl(serverUrl, _token, albumThumbnailAssetId) {
     if (!albumThumbnailAssetId) return null
     return getThumbnailUrl(serverUrl, null, albumThumbnailAssetId, 'thumbnail')
 }
+
+export async function getAlbumAssetSample(serverUrl, token, albumId, size = 5) {
+    const headers = {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+    }
+
+    const res = await fetch(`${BASE(serverUrl)}/api/search/metadata`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ albumIds: [albumId], size: Math.max(1, size), page: 1 }),
+    })
+    if (!res.ok) throw new Error(`Search metadata failed: ${res.status}`)
+    const data = await res.json()
+    const items = data?.assets?.items ?? data?.assets ?? data?.items ?? (Array.isArray(data) ? data : null)
+    if (!Array.isArray(items)) throw new Error(`Unexpected search response. Keys: [${Object.keys(data).join(', ')}]`)
+    return items
+}

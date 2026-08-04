@@ -1,6 +1,6 @@
 const blobCache = new Map();
 const pendingRequests = new Map();
-const MAX_CACHE_ENTRIES = 72;
+const MAX_CACHE_ENTRIES = 240;
 const MAX_CACHE_BYTES = 192 * 1024 * 1024;
 let cacheBytes = 0;
 

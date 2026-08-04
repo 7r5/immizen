@@ -9,6 +9,7 @@ const COLS = 5;
 const PAGE = 80;
 // Expand the render window when focus is this many items from the loaded boundary
 const LOAD_AHEAD = COLS * 4;
+const albumAssetsCache = new Map();
 
 export default function AlbumDetailScreen() {
   const { token, serverUrl, screenParams, navigate, goBack } = useApp();
@@ -18,8 +19,19 @@ export default function AlbumDetailScreen() {
   const [error, setError] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
   const focusedRef = useRef(null);
+  const gridRef = useRef(null);
+  const skipNextScrollRef = useRef(false);
+  const didRestoreRef = useRef(false);
 
   useEffect(() => {
+    const cachedAssets = albumAssetsCache.get(albumId);
+    if (cachedAssets) {
+      setAssets(cachedAssets);
+      setError(null);
+      setLoading(false);
+      return undefined;
+    }
+
     let active = true;
     getAlbum(serverUrl, token, albumId)
       .then(async (album) => {
@@ -34,7 +46,9 @@ export default function AlbumDetailScreen() {
           );
         }
         if (!active) return;
-        setAssets(found);
+        const orderedAssets = [...found].reverse();
+        albumAssetsCache.set(albumId, orderedAssets);
+        setAssets(orderedAssets);
         setError(null);
         setLoading(false);
       })
@@ -49,6 +63,7 @@ export default function AlbumDetailScreen() {
   }, [albumId, token, serverUrl, reloadKey]);
 
   const retry = () => {
+    albumAssetsCache.delete(albumId);
     setError(null);
     setLoading(true);
     setReloadKey((value) => value + 1);
@@ -56,12 +71,20 @@ export default function AlbumDetailScreen() {
 
   const isEmpty = !loading && !error && assets.length === 0;
 
-  const { focusIndex } = useDpadGrid({
+  const { focusIndex, setFocusIndex } = useDpadGrid({
     count: assets.length,
     cols: COLS,
     onSelect: (i) => {
       if (error || isEmpty) return retry();
-      if (assets[i]) navigate("viewer", { assets, startIndex: i });
+      if (assets[i]) {
+        navigate("albumDetail", {
+          albumId,
+          albumName,
+          returnFocusIndex: i,
+          returnScrollTop: gridRef.current?.scrollTop ?? 0,
+        });
+        navigate("viewer", { assets, startIndex: i });
+      }
     },
     onBack: goBack,
     enabled: !loading,
@@ -72,10 +95,53 @@ export default function AlbumDetailScreen() {
     Math.max(PAGE, Math.ceil((focusIndex + LOAD_AHEAD + 1) / PAGE) * PAGE),
   );
 
-  // scroll focused thumbnail into view
+  useEffect(() => {
+    if (didRestoreRef.current) return;
+    if (loading || error || isEmpty || assets.length === 0) return;
+
+    const savedIndex = Number(screenParams.returnFocusIndex);
+    const savedScrollTop = Number(screenParams.returnScrollTop);
+    const hasSavedIndex = Number.isInteger(savedIndex);
+    const hasSavedScroll = Number.isFinite(savedScrollTop);
+
+    if (!hasSavedIndex && !hasSavedScroll) {
+      didRestoreRef.current = true;
+      return;
+    }
+
+    if (hasSavedScroll && gridRef.current) {
+      gridRef.current.scrollTop = Math.max(savedScrollTop, 0);
+    }
+
+    if (hasSavedIndex) {
+      const clampedIndex = Math.min(
+        Math.max(savedIndex, 0),
+        Math.max(assets.length - 1, 0),
+      );
+      skipNextScrollRef.current = true;
+      setFocusIndex(clampedIndex);
+    }
+
+    didRestoreRef.current = true;
+  }, [
+    assets.length,
+    error,
+    isEmpty,
+    loading,
+    screenParams.returnFocusIndex,
+    screenParams.returnScrollTop,
+    setFocusIndex,
+  ]);
+
+  // Keep focused thumbnail visible while navigating with the remote.
   useEffect(() => {
     const focused = focusedRef.current;
     if (!focused) return;
+    if (skipNextScrollRef.current) {
+      skipNextScrollRef.current = false;
+      focused.focus({ preventScroll: true });
+      return;
+    }
     focused.scrollIntoView({ block: "nearest", inline: "nearest" });
     focused.focus({ preventScroll: true });
   }, [focusIndex]);
@@ -112,6 +178,7 @@ export default function AlbumDetailScreen() {
         </div>
       ) : (
         <div
+          ref={gridRef}
           className="asset-grid"
           style={{ "--cols": COLS }}
           aria-label="Elementos del álbum"
@@ -125,7 +192,15 @@ export default function AlbumDetailScreen() {
               style={{ "--stagger-index": Math.min(i % PAGE, 30) }}
               tabIndex={focusIndex === i ? 0 : -1}
               aria-label={`${asset.type === "VIDEO" ? "Video" : "Foto"}: ${asset.originalFileName ?? `elemento ${i + 1}`}`}
-              onClick={() => navigate("viewer", { assets, startIndex: i })}
+              onClick={() => {
+                navigate("albumDetail", {
+                  albumId,
+                  albumName,
+                  returnFocusIndex: i,
+                  returnScrollTop: gridRef.current?.scrollTop ?? 0,
+                });
+                navigate("viewer", { assets, startIndex: i });
+              }}
             >
               <AuthImage
                 url={getThumbnailUrl(serverUrl, token, asset.id, "thumbnail")}

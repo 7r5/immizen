@@ -37,22 +37,62 @@ const VIEWER_WIDTH = 1920;
 const VIEWER_HEIGHT = 1080;
 
 function videoOrientationStyle(asset) {
-  const orientation = Number(asset?.exifInfo?.orientation);
-  if (orientation === 3) return { transform: "rotate(180deg)" };
-  if (orientation === 6 || orientation === 8) {
+  const orientation = Number(asset?.exifInfo?.orientation) || 1;
+  const rotationByOrientation = {
+    1: 0,
+    2: 0,
+    3: 180,
+    4: 180,
+    5: 90,
+    6: 90,
+    7: 270,
+    8: 270,
+  };
+  const rotation = rotationByOrientation[orientation] ?? 0;
+
+  if (rotation === 0) {
+    if (orientation === 2) return { transform: "scaleX(-1)" };
+    return undefined;
+  }
+
+  const exif = asset?.exifInfo ?? {};
+  const sourceWidth = Number(exif.exifImageWidth ?? exif.width ?? 0);
+  const sourceHeight = Number(exif.exifImageHeight ?? exif.height ?? 0);
+  const sideways = rotation === 90 || rotation === 270;
+  const displayWidth = sideways ? sourceHeight : sourceWidth;
+  const displayHeight = sideways ? sourceWidth : sourceHeight;
+  const hasValidSize = displayWidth > 0 && displayHeight > 0;
+
+  // Fit the oriented frame to the 1920x1080 viewer without distorting aspect ratio.
+  if (hasValidSize) {
+    const scale = Math.min(
+      VIEWER_WIDTH / displayWidth,
+      VIEWER_HEIGHT / displayHeight,
+    );
+    const fittedWidth = Math.round(displayWidth * scale);
+    const fittedHeight = Math.round(displayHeight * scale);
+    const preRotateWidth = sideways ? fittedHeight : fittedWidth;
+    const preRotateHeight = sideways ? fittedWidth : fittedHeight;
     return {
       top: "50%",
       left: "50%",
       right: "auto",
       bottom: "auto",
-      width: `${VIEWER_HEIGHT}px`,
-      height: `${VIEWER_WIDTH}px`,
+      width: `${preRotateWidth}px`,
+      height: `${preRotateHeight}px`,
       maxWidth: "none",
       maxHeight: "none",
-      transform: `translate(-50%, -50%) rotate(${orientation === 6 ? 90 : 270}deg)`,
+      transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
     };
   }
-  return undefined;
+
+  return {
+    top: "50%",
+    left: "50%",
+    right: "auto",
+    bottom: "auto",
+    transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+  };
 }
 
 // Immich duration comes as "H:MM:SS.mmm"; drop milliseconds and empty hours.
